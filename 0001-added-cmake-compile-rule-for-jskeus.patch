@@ -1,0 +1,46 @@
+From 70a2ade6479e828d541fdfd0bec2394012392c4b Mon Sep 17 00:00:00 2001
+From: Kei Okada <kei.okada@gmail.com>
+Date: Mon, 22 Dec 2014 13:14:45 +0900
+Subject: [PATCH] added cmake compile rule for jskeus
+
+---
+ patches/CMakeLists.txt | 27 +++++++++++++++++++++++++++
+ 1 file changed, 27 insertions(+)
+ create mode 100644 patches/CMakeLists.txt
+
+diff --git a/patches/CMakeLists.txt b/patches/CMakeLists.txt
+new file mode 100644
+index 0000000..fda2118
+--- /dev/null
++++ b/patches/CMakeLists.txt
+@@ -0,0 +1,27 @@
++# http://ros.org/doc/groovy/api/catkin/html/user_guide/supposed.html
++cmake_minimum_required(VERSION 2.8.3)
++project(jskeus)
++
++find_package(euslisp REQUIRED)
++message(STATUS "ARCHDIR=${ARCHDIR}")
++message(STATUS "EUSDIR=${EUSDIR}")
++
++# build irteus
++set(INSTALLDIR \${DESTDIR}${CMAKE_INSTALL_PREFIX}/share/euslisp/)
++add_custom_command(OUTPUT ${INSTALLDIR}
++  COMMAND cmake -E make_directory ${INSTALLDIR}/${ARCHDIR}/bin
++  COMMAND cmake -E make_directory ${INSTALLDIR}/${ARCHDIR}/obj
++  COMMAND cmake -E make_directory ${INSTALLDIR}/${ARCHDIR}/lib)
++add_custom_target(compile_jskeus ALL
++  DEPENDS ${INSTALLDIR}
++  COMMAND export EUSDIR=${EUSDIR} lt_cv_sys_lib_dlsearch_path_spec=${lt_cv_sys_lib_dlsearch_path_spec} && \$\(MAKE\) -j1 -l1 -C ${PROJECT_SOURCE_DIR}/irteus -f Makefile ARCHDIR=${ARCHDIR} EUSDIR=${EUSDIR} IRTEUSDIR=${INSTALLDIR})
++
++install(DIRECTORY doc images irteus
++   DESTINATION share/jskeus/
++   USE_SOURCE_PERMISSIONS)
++install(FILES package.xml DESTINATION share/jskeus/)
++
++
++
++
++
+-- 
+1.9.1
+
