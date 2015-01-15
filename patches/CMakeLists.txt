@@ -11,14 +11,14 @@ execute_process(COMMAND grep version ${PROJECT_SOURCE_DIR}/package.xml
                 OUTPUT_VARIABLE jskeus_VERSION
                 OUTPUT_STRIP_TRAILING_WHITESPACE)
 # build irteus on install command
-set(INSTALLDIR ${CMAKE_INSTALL_PREFIX}/share/euslisp/jskeus/eus/)
+set(INSTALLDIR \${DESTDIR}${CMAKE_INSTALL_PREFIX}/share/euslisp/jskeus/eus/)
 add_custom_command(OUTPUT ${INSTALLDIR}
   COMMAND cmake -E make_directory ${INSTALLDIR}/${ARCHDIR}/bin
   COMMAND cmake -E make_directory ${INSTALLDIR}/${ARCHDIR}/obj
   COMMAND cmake -E make_directory ${INSTALLDIR}/${ARCHDIR}/lib)
 add_custom_target(compile_jskeus
   DEPENDS ${INSTALLDIR}
-  COMMAND export EUSDIR=${EUSDIR} lt_cv_sys_lib_dlsearch_path_spec=${lt_cv_sys_lib_dlsearch_path_spec} && \$\(MAKE\) -j1 -l1 -C ${PROJECT_SOURCE_DIR}/irteus -f Makefile ARCHDIR=${ARCHDIR} EUSDIR=${EUSDIR} IRTEUSDIR=\${DESTDIR}${INSTALLDIR} 'SVNVERSION=\\"${jskeus_VERSION}\\"' VERBOSE=1)
+  COMMAND export EUSDIR=${EUSDIR} lt_cv_sys_lib_dlsearch_path_spec=${lt_cv_sys_lib_dlsearch_path_spec} && \$\(MAKE\) -j1 -l1 -C ${PROJECT_SOURCE_DIR}/irteus -f Makefile ARCHDIR=${ARCHDIR} EUSDIR=${EUSDIR} IRTEUSDIR=${INSTALLDIR} 'SVNVERSION=\\"${jskeus_VERSION}\\"' VERBOSE=1)
 
 install(CODE "execute_process(COMMAND \"${CMAKE_COMMAND}\" --build \"${CMAKE_BINARY_DIR}\" --target compile_jskeus RESULT_VARIABLE result_variable OUTPUT_VARIABLE output_variable)
 if(NOT \${result_variable} EQUAL 0)
