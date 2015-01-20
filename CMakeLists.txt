@@ -13,6 +13,7 @@ execute_process(COMMAND grep version ${PROJECT_SOURCE_DIR}/package.xml
 # build irteus on install command
 set(INSTALLDIR \${DESTDIR}${CMAKE_INSTALL_PREFIX}/share/euslisp/jskeus/eus/)
 add_custom_command(OUTPUT ${INSTALLDIR}
+  COMMAND cmake -E make_directory ${INSTALLDIR}/lib
   COMMAND cmake -E make_directory ${INSTALLDIR}/${ARCHDIR}/bin
   COMMAND cmake -E make_directory ${INSTALLDIR}/${ARCHDIR}/obj
   COMMAND cmake -E make_directory ${INSTALLDIR}/${ARCHDIR}/lib)
