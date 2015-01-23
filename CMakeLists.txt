@@ -34,7 +34,8 @@ install(DIRECTORY irteus
    USE_SOURCE_PERMISSIONS)
 install(FILES package.xml DESTINATION share/jskeus/)
 
-add_custom_target(test)
+add_custom_target(test) # dummy target for catkin test
+
 
 
 
