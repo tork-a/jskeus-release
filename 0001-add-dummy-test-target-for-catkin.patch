@@ -1,0 +1,25 @@
+From 4c337468d56a931025c41ec9f6728888506bf887 Mon Sep 17 00:00:00 2001
+From: Kei Okada <kei.okada@gmail.com>
+Date: Fri, 23 Jan 2015 10:47:00 +0900
+Subject: [PATCH] add dummy test target for catkin
+
+---
+ CMakeLists.txt | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 75f15dd..d68b8ed 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -34,7 +34,7 @@ install(DIRECTORY irteus
+    USE_SOURCE_PERMISSIONS)
+ install(FILES package.xml DESTINATION share/jskeus/)
+ 
+-
++add_custom_target(test)
+ 
+ 
+ 
+-- 
+1.9.1
+
