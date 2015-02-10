@@ -1,3 +1,24 @@
+## jskeus (jade) - 1.0.2-0
+
+The packages in the `jskeus` repository were released into the `jade` distro by running `/usr/bin/bloom-release jskeus --track jade -r jade --new-track` on `Tue, 10 Feb 2015 09:34:50 -0000`
+
+The `jskeus` package was released.
+
+Version of package(s) in repository `jskeus`:
+- upstream repository: https://github.com/euslisp/jskeus
+- release repository: unknown
+- rosdistro version: `null`
+- old version: `null`
+- new version: `1.0.2-0`
+
+Versions of tools used:
+- bloom version: `0.5.17`
+- catkin_pkg version: `0.2.2`
+- rosdep version: `0.10.33`
+- rosdistro version: `0.4.0`
+- vcstools version: `0.1.33`
+
+
 ## jskeus (hydro) - 1.0.2-0
 
 The packages in the `jskeus` repository were released into the `hydro` distro by running `/usr/bin/bloom-release jskeus --track hydro --rosdistro hydro --new-track` on `Fri, 23 Jan 2015 08:00:23 -0000`
