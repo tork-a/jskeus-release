@@ -35,3 +35,33 @@ install(DIRECTORY irteus
 install(FILES package.xml DESTINATION share/jskeus/)
 
 add_custom_target(test) # dummy target for catkin test
+
+find_package(catkin)
+catkin_package()
+string(REGEX MATCH "catkin" need_catkin "$ENV{_}")
+get_filename_component(install_dir_name ${CMAKE_INSTALL_PREFIX} NAME)
+if(need_catkin AND NOT install_dir_name MATCHES "install") # check if  install_prefix end with /install, we can  remove this section of we remove all rosrun euslisp ... usage
+  install(CODE "
+## this is tricky force write catkin marker file
+set(_catkin_marker_file \"\${CMAKE_INSTALL_PREFIX}/.catkin\")
+# check if the develspace marker file exists yet
+if(EXISTS \${_catkin_marker_file})
+  file(READ \${_catkin_marker_file} _existing_sourcespaces)
+  if(_existing_sourcespaces STREQUAL \"\")
+    # write this sourcespace to the marker file
+    file(WRITE \${_catkin_marker_file} \"${CMAKE_INSTALL_PREFIX}/${CATKIN_PACKAGE_SHARE_DESTINATION}\")
+  else()
+    # append to existing list of sourcespaces if it's not in the list
+    list(FIND _existing_sourcespaces \"${CMAKE_INSTALL_PREFIX}/${CATKIN_PACKAGE_SHARE_DESTINATION}\" _existing_sourcespace_index)
+    if(_existing_sourcespace_index EQUAL -1)
+      file(APPEND \${_catkin_marker_file} \";${CMAKE_INSTALL_PREFIX}/${CATKIN_PACKAGE_SHARE_DESTINATION}\")
+    endif()
+  endif()
+else()
+  # create a new develspace marker file
+  # NOTE: extra care must be taken when running multiple catkin jobs in parallel 
+  #       so that this does not overwrite the result of a similar call in another package
+  file(WRITE \${_catkin_marker_file} \"${CMAKE_INSTALL_PREFIX}/${CATKIN_PACKAGE_SHARE_DESTINATION}\")
+endif()
+")
+endif()
