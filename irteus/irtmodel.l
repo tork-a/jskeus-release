@@ -727,7 +727,9 @@
 (defclass cascaded-link
   :super cascaded-coords
   :slots (links joint-list bodies
-		collision-avoidance-links))
+		collision-avoidance-links
+                end-coords-list
+                ))
 
 (defmethod cascaded-link
   (:init (&rest args
@@ -750,6 +752,10 @@
   (:joint-list (&rest args) "Returns joint list, or args is passed to joints" (user::forward-message-to-all joint-list args))
   (:link (name) "Return a link with given name." (find name links :test #'equal :key #'(lambda (x) (send x :name))))
   (:joint (name) "Return a joint with given name." (find name joint-list :test #'equal :key #'(lambda (x) (send x :name))))
+  (:end-coords
+   (name)
+   "Returns end-coords with given name"
+   (find name end-coords-list :test #'equal :key #'(lambda (x) (send x :name))))
 
   (:bodies (&rest args) "Return bodies of this object. If args is given it passed to all bodies" (user::forward-message-to-all bodies args))
   (:faces () "Return faces of this object." (flatten (send-all bodies :faces)))
@@ -856,6 +862,10 @@
          (overwrite-collision-model nil))
    ;; initialize for :make-joint-min-max-table
    (if (null debug) (send-all (send self :links) :analysis-level :coords))
+   ;; for debug
+   (dolist (jj (list joint0 joint1))
+     (send jj :put :org-min-angle (send jj :min-angle))
+     (send jj :put :org-max-angle (send jj :max-angle)))
    (let* ((pc (send self :copy-worldcoords))
           (pav (send self :angle-vector))
           (min-joint0 (truncate (- (send joint0 :min-angle) 1e-4)))
@@ -952,6 +962,40 @@
          (send joint0 :joint-min-max-target joint1)
          (send joint0 :joint-min-max-table table1))
        )))
+  ;; plot function for min max table
+  (:plot-joint-min-max-table-common
+   (joint0 joint1)
+   (let ((ret))
+     (null-output
+      (do ((j0 (get joint0 :org-min-angle) (+ 1 j0))) ((> j0 (get joint0 :org-max-angle)))
+          (send self :init-pose)
+          (send joint0 :joint-angle j0)
+          (let ((flg0 (eps= (float (send joint0 :joint-angle)) (float j0))))
+            (do ((j1 (get joint1 :org-min-angle)(+ 1 j1))) ((> j1 (get joint1 :org-max-angle)))
+                (send joint1 :joint-angle j1)
+                (let ((flg1 (eps= (float (send joint1 :joint-angle)) (float j1))))
+                  (if (and flg0 flg1) (push (list j0 j1) ret))
+                  ))
+            )))
+     (reverse ret)))
+  (:plot-joint-min-max-table
+   (joint0 joint1)
+   "Plot joint min max table on Euslisp window."
+   (let* ((min-max-table-view
+           (instance x::panel :create
+                     :width  (round (- (send joint0 :get :org-max-angle) (send joint0 :get :org-min-angle)))
+                     :height (round (- (send joint1 :get :org-max-angle) (send joint1 :get :org-min-angle)))
+                     :atitle "min-max-table-view"))
+          (ret (send self :plot-joint-min-max-table-common joint0 joint1)))
+     (send min-max-table-view :color #xffffff)
+     (send min-max-table-view :flush)
+     (send min-max-table-view :color #xff0000)
+     (dolist (jj ret)
+       (send min-max-table-view :draw-line
+             (float-vector (- (round (car jj)) (get joint0 :org-min-angle)) (- (round (cadr jj)) (get joint1 :org-min-angle)))
+             (float-vector (- (round (car jj)) (get joint0 :org-min-angle)) (- (round (cadr jj)) (get joint1 :org-min-angle)))))
+     (send min-max-table-view :flush)
+     ))
   )
 
 ;;;
@@ -2368,6 +2412,42 @@
 	   (setf (aref ret (+ 3 i) (+ (* c 6) j)) (aref (elt contact-matrices c) i j))
 	   )))
      ret))
+  ;; closed loop kinematics method
+  (:inverse-kinematics-for-closed-loop-forward-kinematics
+   (target-coords
+    &rest args
+    &key (move-target) (link-list)
+         (move-joints-hook) (additional-weight-list)
+         ;; closed loop params
+         (constrained-joint-list) (constrained-joint-angle-list)
+    &allow-other-keys)
+   "Solve inverse-kinematics for closed loop forward kinematics.
+    Move move-target to target-coords with link-list.
+    link-list loop should be close when move-target reachs target-coords.
+    constrained-joint-list is list of joints specified given joint angles in closed loop.
+    constrained-joint-angle-list is list of joint-angle for constrained-joint-list."
+   ;; Set joint-angle
+   (mapcar #'(lambda (jnt len)
+               (send jnt :joint-angle len))
+           constrained-joint-list constrained-joint-angle-list)
+   ;; Solve IK
+   (send* self :inverse-kinematics
+          target-coords
+          :move-target move-target :link-list link-list
+          :move-joints-hook
+          #'(lambda ()
+              ;; Reset joint-angle during IK
+              (mapcar #'(lambda (jnt len)
+                          (send jnt :joint-angle len))
+                      constrained-joint-list constrained-joint-angle-list)
+              (if (functionp move-joints-hook) (funcall move-joints-hook))
+              nil)
+          ;; Set constrained-joint-list's weight 0 not to move joints
+          :additional-weight-list
+          (append additional-weight-list
+                  (mapcar #'(lambda (jnt) (list (send jnt :child-link) 0.0)) constrained-joint-list))
+          args)
+   )
   )
 
 (defun all-child-links (s &optional (pred #'identity))
