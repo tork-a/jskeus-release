@@ -78,9 +78,25 @@
 	  rarm-collision-avoidance-links
 	  larm rarm lleg rleg torso head
           ;; sensor slots
-          force-sensors imu-sensors cameras))
+          force-sensors imu-sensors cameras
+          ;;
+          support-polygons
+          ))
 
 (defmethod robot-model
+  (:init-ending
+   ()
+   (prog1
+       (send-super :init-ending)
+     (if (and (not (every #'null (send self :legs))) ;; for legged robot
+              (not (every #'null (send self :legs :end-coords)))) ;; for robot with legs end-coords
+       (send self :make-support-polygons))
+     (setq end-coords-list (remove nil (append end-coords-list
+                                               (list larm-end-coords rarm-end-coords
+                                                     lleg-end-coords rleg-end-coords
+                                                     head-end-coords torso-end-coords))))
+     )
+   )
   (:limb
    (limb method &rest args)
    (let (ret)
@@ -448,6 +464,13 @@
      (nreverse result)))
   (:print-vector-for-robot-limb
    (vec)
+   "Print angle vector with limb alingment and limb indent.
+    For example, if robot is rarm, larm, and torso, print result is:
+    #f(
+       rarm-j0 ... rarm-jN
+       larm-j0 ... larm-jN
+       torso-j0 ... torso-jN
+       )"
    (let ((tmp-limbs
           (remove-duplicates
            (mapcar #'(lambda (l)
@@ -570,7 +593,8 @@
           (mapcan #'(lambda (x) (list x (float-vector 0 0 0))) al)) ;; [mm]
          (init-pose-function #'(lambda () (send self :move-centroid-on-foot :both '(:rleg :lleg))))
          (start-with-double-support t)
-         (end-with-double-support t))
+         (end-with-double-support t)
+         (calc-zmp t))
    "Calculate walking pattern from foot step list and return pattern list as a list of angle-vector, root-coords, time, and so on."
    (let* ((res) (ret) (tm 0)
           (gg (instance gait-generator :init self dt)))
@@ -583,15 +607,16 @@
            :start-with-double-support start-with-double-support :end-with-double-support end-with-double-support)
 
      (while (null (setq ret (send gg :proc-one-tick :type :cycloid :debug t :solve-angle-vector-args solve-angle-vector-args))))
-     (dotimes (i 2) (send self :calc-zmp)) ;; for zmp initialization
+     (if calc-zmp (dotimes (i 2) (send self :calc-zmp))) ;; for zmp initialization
 
      ;; following are in control loop
      (while (setq ret (send gg :proc-one-tick :type :cycloid :debug t :solve-angle-vector-args solve-angle-vector-args))
        ;; only for debug view
-       (let ((czmp (send self :calc-zmp
-                         (send self :angle-vector)
-                         (send (car (send self :links)) :copy-worldcoords)
-                         :dt dt :pZMPz (elt (elt ret 5) 2)))
+       (let ((czmp (if calc-zmp
+                       (send self :calc-zmp
+                             (send self :angle-vector)
+                             (send (car (send self :links)) :copy-worldcoords)
+                             :dt dt :pZMPz (elt (elt ret 5) 2))))
              (end-coords-list (mapcar #'(lambda (x) (send self x :end-coords :copy-worldcoords)) (gg . all-limbs)))
              (contact-state (elt ret 8))
              )
@@ -631,7 +656,7 @@
                        (if (eq :swing cs) #f(0 1 0) #f(1 0 0))))
              end-coords-list contact-state)
      (send rz :draw-on :flush nil :size 300 :color #f(0 0 1))
-     (send czmp :draw-on :flush nil :size 200 :width 5)
+     (if czmp (send czmp :draw-on :flush nil :size 200 :width 5))
      (with-modify-color
       #f(1 0 0)
       #'(lambda () (send *viewer* :viewsurface :string 20 20 "red = support leg")))
@@ -754,6 +779,109 @@
                             (setq dx (+ dx ddx) dy (+ dy ddy) dth (+ dth ddth)))))
        (push (funcall gen-go-pos-step-node-func mc leg leg-translate-pos) ret)
        (reverse ret))))
+  ;; Support polygon methods
+  (:support-polygons
+   ()
+   "Return support polygons."
+   (send-all (send-all support-polygons :body) :worldcoords)
+   support-polygons)
+  (:support-polygon
+   (name)
+   "Return support polygon with given name."
+   (find name (send self :support-polygons) :test #'equal :key #'(lambda (x) (send x :name))))
+  (:make-support-polygons
+   ()
+   (setq support-polygons
+         (list
+          (send self :make-sole-polygon :rleg)
+          (send self :make-sole-polygon :lleg)))
+   )
+  ;; TODO
+  ;;  1. Sole polygon change according to toe joint usage is not supported.
+  ;;  2. Sole body is bounding box. This should be convex hull (https://github.com/euslisp/EusLisp/issues/17)
+  (:make-sole-polygon
+   (name)
+   (labels ((all-descendant-links
+             (l)
+             (if (and l (send l :descendants))
+                 (append (list l) (flatten (mapcar #'all-descendant-links (remove-if-not #'(lambda (x) (derivedp x bodyset-link)) (send l :descendants)))))
+               )))
+     (send-all (all-descendant-links (car (send self name :links))) :worldcoords)
+     (let* ((target-nm (read-from-string (format nil "~A-sole-body" name)))
+            (b (send
+                (make-bounding-box
+                 (remove-if
+                  #'(lambda (p) (> (elt (send self name :end-coords :inverse-transform-vector p) 2) 5.0))
+                  (remove-duplicates
+                   (flatten (send-all (flatten (send-all (all-descendant-links (car (send self name :links))) :bodies)) :vertices))
+                   :test #'(lambda (x y) (eps-v= x y *epsilon*)))))
+                :body)))
+       (send (send self name :end-coords :parent) :assoc b)
+       (send self :put target-nm b)
+       (send b :worldcoords)
+       (let ((f (find-if #'(lambda (x) (memq :bottom (send x :id))) (send b :faces))))
+         (send f :name name)
+         f))))
+  (:make-default-linear-link-joint-between-attach-coords
+   (attach-coords-0 attach-coords-1 end-coords-name linear-joint-name)
+   "Make default linear arctuator module such as muscle and cylinder and append lins and joint-list.
+    Module includes parent-link => (j0) => l0 => (j1) => l1 (linear actuator) => (j2) => l2 => end-coords.
+    attach-coords-0 is root side coords which linear actulator is attached to.
+    attach-coords-1 is end side coords which linear actulator is attached to.
+    end-coords-name is the name of end-coords.
+    linear-joint-name is the name of linear actuator."
+   (let ((l0) (l1) (l2) (j0) (j1) (j2)
+         (linear-link-len (distance (send attach-coords-1 :worldpos) (send attach-coords-0 :worldpos))))
+     ;; Make links
+     (setq l0 (instance bodyset-link :init (make-cascoords)
+                        :bodies (list (let ((b0 (make-cylinder 5 (* 0.5 linear-link-len))))
+                                        (send b0 :set-color :red)
+                                        b0))))
+     (send l0 :newcoords (send attach-coords-0 :copy-worldcoords))
+     (orient-coords-to-axis l0 (normalize-vector (v- (send attach-coords-1 :worldpos) (send attach-coords-0 :worldpos))))
+
+     (setq l1 (instance bodyset-link :init (make-cascoords)
+                        :bodies (list (let ((b0 (make-cylinder 5 (* 0.5 linear-link-len))))
+                                        (send b0 :set-color :red)
+                                        (send b0 :translate (float-vector 0 0 (* -0.5 linear-link-len)))
+                                        b0))))
+     (send l1 :newcoords (send attach-coords-1 :copy-worldcoords))
+     (orient-coords-to-axis l1 (normalize-vector (v- (send attach-coords-1 :worldpos) (send attach-coords-0 :worldpos))))
+
+     (setq l2 (instance bodyset-link :init (make-cascoords)
+                        :bodies (list (let ((b0 (make-cube 5 5 5))) (send b0 :set-color :red) b0))))
+     (send l2 :newcoords (send attach-coords-1 :copy-worldcoords))
+
+     ;; Make end-coords
+     (push (make-cascoords :coords (send attach-coords-1 :copy-worldcoords) :name end-coords-name)
+           end-coords-list)
+
+     ;; Assoc links
+     (send (send attach-coords-0 :parent) :assoc l0)
+     (send l0 :assoc l1)
+     (send l1 :assoc l2)
+     (send l2 :assoc (car end-coords-list))
+     (send l1 :translate (float-vector 0 0 (* -1 linear-link-len))) ;; move to length = 0 position
+
+     ;; Make joint
+     (setq j0 (instance sphere-joint :init
+                        :parent-link (send l0 :parent) :child-link l0
+                        :min (float-vector -360 -360 -360)
+                        :max (float-vector 360 360 360)))
+     (setq j1 (instance linear-joint :init
+                        :parent-link (send l1 :parent) :child-link l1
+                        :name linear-joint-name
+                        :axis :z :min 0 :max 1000))
+     (setq j2 (instance sphere-joint :init
+                        :parent-link (send l2 :parent) :child-link l2
+                        :min (float-vector -360 -360 -360)
+                        :max (float-vector 360 360 360)))
+     (send j1 :joint-angle linear-link-len) ;; set linear joint angle to default length
+
+     ;; Append joint-list and links
+     (setq links (append links (list l0 l1 l2)))
+     (setq joint-list (append joint-list (list j0 j1 j2)))
+     ))
   )
 (in-package "GEOMETRY")
 
