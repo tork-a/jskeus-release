@@ -727,7 +727,9 @@
 (defclass cascaded-link
   :super cascaded-coords
   :slots (links joint-list bodies
-		collision-avoidance-links))
+		collision-avoidance-links
+                end-coords-list
+                ))
 
 (defmethod cascaded-link
   (:init (&rest args
@@ -750,6 +752,10 @@
   (:joint-list (&rest args) "Returns joint list, or args is passed to joints" (user::forward-message-to-all joint-list args))
   (:link (name) "Return a link with given name." (find name links :test #'equal :key #'(lambda (x) (send x :name))))
   (:joint (name) "Return a joint with given name." (find name joint-list :test #'equal :key #'(lambda (x) (send x :name))))
+  (:end-coords
+   (name)
+   "Returns end-coords with given name"
+   (find name end-coords-list :test #'equal :key #'(lambda (x) (send x :name))))
 
   (:bodies (&rest args) "Return bodies of this object. If args is given it passed to all bodies" (user::forward-message-to-all bodies args))
   (:faces () "Return faces of this object." (flatten (send-all bodies :faces)))
@@ -2406,6 +2412,42 @@
 	   (setf (aref ret (+ 3 i) (+ (* c 6) j)) (aref (elt contact-matrices c) i j))
 	   )))
      ret))
+  ;; closed loop kinematics method
+  (:inverse-kinematics-for-closed-loop-forward-kinematics
+   (target-coords
+    &rest args
+    &key (move-target) (link-list)
+         (move-joints-hook) (additional-weight-list)
+         ;; closed loop params
+         (constrained-joint-list) (constrained-joint-angle-list)
+    &allow-other-keys)
+   "Solve inverse-kinematics for closed loop forward kinematics.
+    Move move-target to target-coords with link-list.
+    link-list loop should be close when move-target reachs target-coords.
+    constrained-joint-list is list of joints specified given joint angles in closed loop.
+    constrained-joint-angle-list is list of joint-angle for constrained-joint-list."
+   ;; Set joint-angle
+   (mapcar #'(lambda (jnt len)
+               (send jnt :joint-angle len))
+           constrained-joint-list constrained-joint-angle-list)
+   ;; Solve IK
+   (send* self :inverse-kinematics
+          target-coords
+          :move-target move-target :link-list link-list
+          :move-joints-hook
+          #'(lambda ()
+              ;; Reset joint-angle during IK
+              (mapcar #'(lambda (jnt len)
+                          (send jnt :joint-angle len))
+                      constrained-joint-list constrained-joint-angle-list)
+              (if (functionp move-joints-hook) (funcall move-joints-hook))
+              nil)
+          ;; Set constrained-joint-list's weight 0 not to move joints
+          :additional-weight-list
+          (append additional-weight-list
+                  (mapcar #'(lambda (jnt) (list (send jnt :child-link) 0.0)) constrained-joint-list))
+          args)
+   )
   )
 
 (defun all-child-links (s &optional (pred #'identity))
