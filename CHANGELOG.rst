@@ -2,6 +2,58 @@
 Changelog for package jskeus
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.0.4 (2015-03-27)
+------------------
+* add closed-loop support
+
+ * [demo/closed-loop.l] Add sample program for closed-loop robots
+ * [irtrobot.l] Add example method to generate default link function such as make-default-robot-link function
+ * [irtmodel.l] Add inverese-kinematics method for closed loop forward kinematics
+ * [irtmodel.l] Add end-coords-list for list of end-coords in  cascaded-link slots
+
+* make support-polygon in init-endinghttps://github.com/euslisp/jskeus/pull/177/files
+
+ * [irtrobot.l] :make-sole-polygon  Trace all descendants bodies (fix for hrp4r and ystleg)
+ * [irtrobot.l] :init-ending Add support polygon methods and make support polygon in :init-ending if legged robots
+
+* Utility function to choose good color for 10 and 20 categories https://github.com/euslisp/jskeus/pull/178
+
+ * [irtutil.l] hvs2rgv set default value for i, s
+ * [irtgl.l] find-color: add new rule, float-vecto [0-1], list [0-255]
+ * [irtutil.l] add color-category10, color-category20: Utility function to choose good color for 10 and 20 categories and add  function to convert from hex color to colormaterial
+
+* misc updates
+
+ * [irteus/nr.c] add tred2, this fixed https://github.com/euslisp/jskeus/issues/186
+ * [test/mathtest.l] add mathtest.l
+ * [irtrobot.l] :calc-walk-pattern-from-foot-step-list Enable to choose  use :calc-zmp or not. Without calc-zmp, we can calculate pattern  fast.
+ * [irtrobot.l] :print-vector-for-robot-limb / Add print vector method documentation
+ * [irtgeo.l] quaternion-from-two-vector / Add function to compute quaternion from two vectors
+ * [package.xml] removed, it is now stored in release repository
+   https://github.com/tork-a/jskeus-release/tree/master/patches
+
+* Contributors: Kei Okada, Ryohei Ueda, Shunichi Nozawa
+
+1.0.3 (2015-02-22)
+------------------
+* [PQP.cpp, euspng.c] cast for printf
+* [irteus/irtgeo.c] inlucde math.c for function prototype
+* output euscomp results to dev/null
+* add test code for vplus/vector-mean
+* [irteus/irtmath.l] add lms/lmeds and sv-decompose from euslib
+* [irtc.c] add ql-decompose and qr-decompose
+* Check only {name} and {name}-robot in maek-robot-model-from-name
+* Add make-robot-model-from-name function to create instance of
+  robot-model from the name of the robot
+* Disable DISPLAY environmental variable during compilation
+* Contributors: Kei Okada, Ryohei Ueda
+
+1.0.2 (2015-01-13)
+------------------
+* Set ${EUSDIR}/irteus as symlink
+* Move plot joint min max function to irtmodel.l and define it as method
+* Contributors: Kei Okada, Shunichi Nozawa
+
 1.0.1 (2014-12-22)
 ------------------
 * Fix for when euslisp is already installed as deb, if objdir is given from upper script, we use them
