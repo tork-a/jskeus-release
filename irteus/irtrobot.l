@@ -594,6 +594,7 @@
          (init-pose-function #'(lambda () (send self :move-centroid-on-foot :both '(:rleg :lleg))))
          (start-with-double-support t)
          (end-with-double-support t)
+         (ik-thre 1) (ik-rthre (deg2rad 1))
          (calc-zmp t))
    "Calculate walking pattern from foot step list and return pattern list as a list of angle-vector, root-coords, time, and so on."
    (let* ((res) (ret) (tm 0)
@@ -604,6 +605,7 @@
            footstep-list default-step-time (send (car (send self :links)) :get :c-til)
            :default-step-height default-step-height :default-double-support-ratio 0.2
            :default-zmp-offsets dzo :all-limbs al
+           :thre ik-thre :rthre ik-rthre
            :start-with-double-support start-with-double-support :end-with-double-support end-with-double-support)
 
      (while (null (setq ret (send gg :proc-one-tick :type :cycloid :debug t :solve-angle-vector-args solve-angle-vector-args))))
@@ -808,13 +810,15 @@
                )))
      (send-all (all-descendant-links (car (send self name :links))) :worldcoords)
      (let* ((target-nm (read-from-string (format nil "~A-sole-body" name)))
+            (vs (remove-duplicates
+                 (flatten (send-all (flatten (send-all (all-descendant-links (car (send self name :links))) :bodies)) :vertices))
+                 :test #'(lambda (x y) (eps-v= x y *epsilon*))))
+            (min-vs (find-extream vs #'(lambda (x) (elt x 2)) #'<))
             (b (send
                 (make-bounding-box
                  (remove-if
-                  #'(lambda (p) (> (elt (send self name :end-coords :inverse-transform-vector p) 2) 5.0))
-                  (remove-duplicates
-                   (flatten (send-all (flatten (send-all (all-descendant-links (car (send self name :links))) :bodies)) :vertices))
-                   :test #'(lambda (x y) (eps-v= x y *epsilon*)))))
+                  #'(lambda (p)
+                      (< 5.0 (- (elt p 2) (elt min-vs 2)))) vs)) ;; 5.0 is margin
                 :body)))
        (send (send self name :end-coords :parent) :assoc b)
        (send self :put target-nm b)
