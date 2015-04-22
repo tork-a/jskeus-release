@@ -2,6 +2,20 @@
 Changelog for package jskeus
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.0.5 (2015-04-22)
+------------------
+
+* ARM suppoort
+
+  * [Makefile.LinuxARM] add -fPIC for arm
+  * [Makefile] fix to work with armv7l
+
+* [irtrobot.l/irtdyna.l] support :ik-thre and :ik-rthre keyword for :calc-walk-pattern-from-footstep-list
+* [irtgraph.l] Add :debug keyword to :pop-from-open-list for consistency in API
+* [irtrobot.l] Update calculation of sole polygon (do not use end-coords)
+
+* Contributors: Kei Okada, Ryohei Ueda, Shunichi Nozawa
+
 1.0.4 (2015-03-27)
 ------------------
 * add closed-loop support
