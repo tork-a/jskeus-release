@@ -198,10 +198,36 @@
        (let* ((target-coords
                (orient-coords-to-axis ;; orient target-coords to look-at direction
                 (make-coords :pos (car args))
-                (v- (car args) (send move-target :worldpos)))))
+                (v- (car args) (send move-target :worldpos))))
+              target-orient move-orient axis-orient axis-orient2 head-weight head-nspace jid)
+         ;; this code assuming that the robot does not have contenious rotatoin joint for neck-y
          (setq p-dif-rot dif-rot
                dif-pos (send move-target :difference-position target-coords :translation-axis nil)
                dif-rot (send move-target :difference-rotation target-coords :rotation-axis :z))
+         (setq head-weight (instantiate float-vector (send self :calc-target-joint-dimension link-list))
+               head-nspace (instantiate float-vector (send self :calc-target-joint-dimension link-list)))
+         (fill head-weight 1)
+         (setq target-orient (matrix-column (send target-coords :worldrot) 2)
+               move-orient (matrix-column (send move-target :worldrot) 2))
+         (setq jid 0)
+         (dolist (j (send self :head :joint-list))
+           (setq axis-orient (send j :parent-link :rotate-vector (case (j . axis) (:x #f(1 0 0)) (:y #f(0 1 0)) (:z #f(0 0 1)) (:-x #f(-1 0 0)) (:-y #f(0 -1 0)) (:-z #f(0 0 -1)) (t (j . axis)))))
+           ;; direciton of non continuous area
+           (setq axis-orient2 (send j :parent-link :rotate-vector #f(-1 0 0)))
+           (when  (or (and  (< (v.* axis-orient move-orient target-orient) 0.0)
+                            (< (v.* axis-orient move-orient axis-orient2) 0.0)
+                            (< (v.* axis-orient axis-orient2 target-orient) 0.0))
+                      (and  (> (v.* axis-orient move-orient target-orient) 0.0)
+                            (> (v.* axis-orient move-orient axis-orient2) 0.0)
+                            (> (v.* axis-orient axis-orient2 target-orient) 0.0)))
+
+             (if (> (v.* axis-orient move-orient target-orient) 0)
+                 (setf (elt head-nspace jid) -1)
+               (setf (elt head-nspace jid) 1))
+             (fill head-weight 0.01)
+             (setf (elt head-weight jid) 0.0)
+             (return nil))
+           (incf jid))
          (send self :inverse-kinematics-loop dif-pos dif-rot
                :move-target move-target
                :collision-avoidance-link-pair nil
@@ -210,6 +236,8 @@
                :link-list link-list
                :loop count :stop stop ;;:thre nil
                :target-coords target-coords ;; for debug-view
+               :null-space head-nspace
+               :weight head-weight
                :debug-view (cadr (memq :debug-view args))))
        )
      (if (and p-dif-rot (<= (norm (v- p-dif-rot dif-rot)) 1e-3))
@@ -352,7 +380,8 @@
    (unless (every #'null (send self :legs)) ;; for legged robot, set default external force and moment at the end-effectors
      (unless target-coords
        (dolist (limb '(:rleg :lleg))
-         (push (send self limb :end-coords) target-coords)))
+         (if (send self limb)
+             (push (send self limb :end-coords) target-coords))))
      (unless (or force-list moment-list) ;; force [N], moment [Nm]
        ;; set default force & moment by solving mimimum internal forces
        (let* ((ret-fm (send self :calc-contact-wrenches-from-total-wrench (send-all target-coords :worldpos))))
@@ -794,9 +823,9 @@
   (:make-support-polygons
    ()
    (setq support-polygons
-         (list
+         (remove nil (list
           (send self :make-sole-polygon :rleg)
-          (send self :make-sole-polygon :lleg)))
+          (send self :make-sole-polygon :lleg))))
    )
   ;; TODO
   ;;  1. Sole polygon change according to toe joint usage is not supported.
@@ -808,6 +837,7 @@
              (if (and l (send l :descendants))
                  (append (list l) (flatten (mapcar #'all-descendant-links (remove-if-not #'(lambda (x) (derivedp x bodyset-link)) (send l :descendants)))))
                )))
+     (unless (send self name :links) (return-from :make-sole-polygon nil))
      (send-all (all-descendant-links (car (send self name :links))) :worldcoords)
      (let* ((target-nm (read-from-string (format nil "~A-sole-body" name)))
             (vs (remove-duplicates
