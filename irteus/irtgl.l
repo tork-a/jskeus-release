@@ -639,6 +639,7 @@
    self)
   (:filename (&optional nm) (if nm (setq filename nm)) filename)
   (:set-color (color &optional (transparent))
+   "set color as float vector of 3 elements, and transparent as float, all values are betwenn 0 to 1"
    (delete-displaylist-id (get self :GL-DISPLAYLIST-ID))
    (setf (get self :GL-DISPLAYLIST-ID) nil)
    (setf (get self :transparent) transparent)
@@ -648,6 +649,7 @@
   ;; (:check-normal ())
   ;; (:update ()) ;; call update when updating coordinates
   (:actual-vertices ()
+   "return list of vertices(float-vector), it returns all vertices of this object"
    (let (ret)
      (dolist (minfo mesh-list)
        (let ((v (cadr (assoc :vertices minfo))))
@@ -656,45 +658,58 @@
              (push (user::c-matrix-row v i) ret)))))
      ret))
   (:calc-bounding-box ()
+   "calculate and set bounding box of this object"
    (setq bbox (make-bounding-box (send self :actual-vertices) 0.0))
    bbox)
   (:vertices ()
+   "return list of vertices(float-vector), it returns vertices of bounding box of this object"
    (unless bbox
      (send self :calc-bounding-box))
    (send (send bbox :body) :vertices))
   (:reset-offset-from-parent ()
+   "move vertices in this object using self transformation, this method change values of vertices. coordinates's method such as :transform just change view of this object"
    (let ((cds (send self :copy-coords)))
      (send self :set-offset cds)
      (send self :reset-coords))
    self)
   (:expand-vertices ()
+   "expand vertices number as same number of indices, it enable to set individual normal to every vertices"
    (let (new-mesh)
      (dolist (minfo mesh-list)
-       (let (;;(nmat (cadr (assoc :normals minfo)))
-             ;;(tp (cadr (assoc :type minfo)))
-             (idxs (cadr (assoc :indices minfo)))
-             (vmat (cadr (assoc :vertices minfo)))
-             (p (instantiate float-vector 3)))
-         (cond
-          ((> (length idxs) (array-dimension vmat 0)) ;; TODO: redundancy check in indices
-           (let ((nvmat (make-matrix (length idxs) 3))
-                 (nidxs (instantiate integer-vector (length idxs))))
-             (setq minfo (delete (assoc :vertices minfo) minfo))
-             (setq minfo (delete (assoc :indices minfo) minfo))
-             (dotimes (i (length idxs))
-               (setf (elt nidxs i) i)
-               (user::c-matrix-row vmat (elt idxs i) p)
-               (user::c-matrix-row nvmat i p t))
-             (setq minfo (nconc minfo (list (list :vertices nvmat) (list :indices nidxs))))
-             (push minfo new-mesh)
-             ))
-          (t
-           (push minfo new-mesh)))
-         ))
+       (push (send self :expand-vertices-info minfo) new-mesh))
      (setq mesh-list new-mesh)
      ))
-  (:calc-normals (&optional (force nil) (expand t))
-   ;;(if expand (send self :expand-vertices))
+  (:expand-vertices-info (minfo)
+   (let ((idxs (cadr (assoc :indices minfo)))
+         (vmat (cadr (assoc :vertices minfo)))
+         (p (instantiate float-vector 3)))
+     (if (> (length idxs) (array-dimension vmat 0)) ;; TODO: redundancy check in indices
+       (let ((nvmat (make-matrix (length idxs) 3))
+             (nidxs (instantiate integer-vector (length idxs))))
+         (setq minfo (delete (assoc :vertices minfo) minfo))
+         (setq minfo (delete (assoc :indices minfo) minfo))
+         (setq minfo (delete (assoc :normals minfo) minfo))
+         (dotimes (i (length idxs))
+           (setf (elt nidxs i) i)
+           (user::c-matrix-row vmat (elt idxs i) p)
+           (user::c-matrix-row nvmat i p t))
+         (setq minfo (nconc minfo (list (list :vertices nvmat) (list :indices nidxs))))
+         minfo)
+       minfo)))
+  (:use-flat-shader ()
+   "use flat shader mode, use opengl function of glShadeModel(GL_FLAT)"
+   (dolist (minfo mesh-list)
+     (nconc minfo (list (list :flat t)))))
+  (:use-smooth-shader ()
+   "use smooth shader mode, use opengl function of glShadeModel(GL_SMOOTH) {default}"
+   (dolist (minfo mesh-list)
+     (let ((a (assoc :flat minfo)))
+       (if a (delete a minfo)))))
+  (:calc-normals (&optional (force nil) (expand t) (flat t))
+   "normal calculation
+if force option is true, clear current normalset.
+if exapnd option is ture, do :expand-vertices.
+if flat option is true, use-flat-shader"
    (dolist (minfo mesh-list)
      (let ((nmat (cadr (assoc :normals minfo)))
            (tp (cadr (assoc :type minfo)))
@@ -713,6 +728,10 @@
          (nil (setq tp 3) (warn ";; keyword :type not found (processing as :triangles)~%"))
          (t (warn ";; mesh-type not found ~A~%") (return-from :calc-normals)))
        (unless (and nmat (null force))
+         (when expand
+           (send self :expand-vertices-info minfo)
+           (setq idxs (cadr (assoc :indices minfo)))
+           (setq vmat (cadr (assoc :vertices minfo))))
          (if nmat (delete (assoc :normals minfo) minfo))
          (let ((len (array-dimension vmat 0)))
            (setq nmat (make-matrix len 3))
@@ -738,9 +757,12 @@
                (user::c-matrix-row nmat (elt idxs (+ (* tp i) 1)) nn t)
                (user::c-matrix-row nmat (elt idxs (+ (* tp i) 2)) nn t))))
            (nconc minfo (list (list :normals nmat)))
+           (when flat
+             (nconc minfo (list (list :flat t))))
            ))
        )))
   (:convert-to-faces (&rest args &key (wrt :local) &allow-other-keys) ;; check-normal <-> check-vertices-order, add face-color
+   "create list of faces using vertices of this object"
    (let (ret)
      (dolist (mesh mesh-list)
        (let* ((vlst (cadr (assoc :vertices mesh)))
@@ -798,12 +820,14 @@
      (nreverse ret)))
   (:faces () (flatten (send self :convert-to-faces :wrt :world)))
   (:convert-to-faceset (&rest args)
+   "create faceset using vertices of this object"
    (let ((fs
           (instance faceset :init :faces
                     (flatten (send* self :convert-to-faces args)))))
      (send fs :transform (send self :worldcoords))
      fs))
-  (:set-offset (cds) ;; not checked
+  (:set-offset (cds)
+   "move vertices in this object using given coordinates, this method change values of vertices. coordinates's method such as :transform just change view of this object"
    (let* ((zero (float-vector 0 0 0))
           (wpos (send cds :worldpos))
           (wrot (send cds :worldrot)))
@@ -817,6 +841,7 @@
             zero wrot nmat nmat))))
      self))
   (:glvertices (&optional (name) (test #'string=))
+   "create individual glvertices objects from mesh-list. if name is given, search mesh has the same name"
    (let (ret)
      (cond
       (name
@@ -828,7 +853,8 @@
        (setq ret (nreverse ret))
        ))
      ret))
-  (:append-glvertices (glv-lst) ;; not checked
+  (:append-glvertices (glv-lst)
+   "append list of glvertices to this object"
    (if (atom glv-lst) (setq glv-lst (list glv-lst)))
    (let (ret (sw (send self :worldcoords)))
      (dolist (glv glv-lst)
@@ -887,7 +913,11 @@
                (normals (cadr (assoc :normals minfo)))
                (indices (cadr (assoc :indices minfo)))
                (texcoords (cadr (assoc :texcoords minfo)))
+               (flat-shade (cadr (assoc :flat minfo)))
                teximg)
+           (when flat-shade
+             (glEnable GL_FLAT)
+             (glShadeModel GL_FLAT))
            (cond
             (fcol ;; use :face-color
              (glColor3fv fcol)
@@ -1035,6 +1065,9 @@
              (glDisableClientState GL_TEXTURE_COORD_ARRAY))
            (when normals (glDisableClientState GL_NORMAL_ARRAY))
            (glDisableClientState GL_VERTEX_ARRAY)
+           (when flat-shade
+             (glEnable GL_SMOOTH)
+             (glShadeModel GL_SMOOTH))
            ))
 
        (when stransparent
@@ -1059,6 +1092,21 @@
    (unless bbox
      (send self :calc-bounding-box))
    bbox)
+  )
+
+;;;
+(defclass glbody
+  :super body
+  :slots (glvertices)
+  )
+(defmethod glbody
+  (:glvertices (&rest args) (forward-message-to glvertices args))
+  (:draw (vwr)
+   (when glvertices
+     (send glvertices :draw vwr)))
+  (:set-color (&rest args)
+   (send-super* :set-color args)
+   (when glvertices (send* glvertices :set-color args)))
   )
 
 ;;; glvertices utility
