@@ -1,0 +1,12 @@
+Source: ros-hydro-jskeus
+Section: misc
+Priority: extra
+Maintainer: Kei Okada <k-okada@jsk.t.u-tokyo.ac.jp>
+Build-Depends: debhelper (>= 9.0.0), ros-hydro-catkin, ros-hydro-euslisp
+Homepage: http://euslisp.github.io/jskeus/manual.html
+Standards-Version: 3.9.2
+
+Package: ros-hydro-jskeus
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, ros-hydro-euslisp
+Description: EusLisp software developed and used by JSK at The University of Tokyo
