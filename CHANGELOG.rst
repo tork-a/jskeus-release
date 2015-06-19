@@ -2,6 +2,48 @@
 Changelog for package jskeus
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.0.8 (2015-06-19)
+------------------
+* [README.md] add documents of null-space-ik
+
+  * downsized null-space-ik.png
+  * added null-space-ik sample in README.md
+  * added null-space-ik sample image
+  * Update README.md
+
+* [irtrobot] fix torque-vector for those who does not have two leg, ex) pepper
+* [irteus/test/const.l] add code to check intern/shadow/defconst
+* [irteus/irtrobot.l] fix :look-at problem (https://github.com/jsk-ros-pkg/jsk_pr2eus/issues/72)
+
+  * fix :look-at, check othre direction
+  * add test code for :look-at
+  * check if look-at try to across non-valid joint angle
+  * set +-150 for neck-p range
+
+* Contributors: Kazuhiro Sasabuchi, Kei Okada
+
+1.0.7 (2015-06-11)
+------------------
+
+* update documentation
+
+  * [doc/{Makefile,jmanual.tex}] fix for compile on 14.04 too
+  * [irteus/irtgl.l] add documentation string to glvertices
+  * [irteus/irtviewer.l] add more comment on make-irtviewer
+
+* irtgl update
+
+  * [irteus/irtgl.l] add flat shader mode to glvertices and add shader mode option to :calc-normals
+  * [irteus/irtgl.l] add glbody, which is copied from collada-body of https://github.com/jsk-ros-pkg/jsk_model_tools/blob/master/euscollada/src/collada2eus.cpp#L1196
+
+* misc updates
+
+  * [irteus/irtrobot.l] fix for one leg robot (for example, pepper)
+  * [irteus/test/object.l] fix test conditoin, not sure why but previous commit needs this modification
+  * [.travis] update doc to jsk-ros-pkg/euslisp-docs
+
+* Contributors: Kei Okada, Yohei Kakiuchi
+
 1.0.6 (2015-04-23)
 ------------------
 
