@@ -648,6 +648,25 @@
      (setf (get self :face-color) nil)))
   ;; (:check-normal ())
   ;; (:update ()) ;; call update when updating coordinates
+  (:get-meshinfo (key &optional (pos -1))
+   (when (< pos 0)
+     (return-from :get-meshinfo (mapcar #'(lambda (info) (cadr (assoc key info))) mesh-list)))
+   (cadr (assoc key (elt mesh-list pos))))
+  (:set-meshinfo (key info &optional (pos -1))
+   (when (< pos 0)
+     (dolist (meshinfo mesh-list)
+       (delete (assoc key meshinfo) meshinfo)
+       (nconc meshinfo (list (list key info))))
+     (return-from :set-meshinfo))
+   (let ((meshinfo (elt mesh-list pos)))
+     (delete (assoc key meshinfo) meshinfo)
+     (nconc meshinfo (list (list key info)))
+     (send self :get-meshinfo key pos)))
+  (:get-material (&optional (pos -1))
+   (send self :get-meshinfo :material pos))
+  (:set-material
+   (mat &optional (pos -1))
+   (send self :set-meshinfo :material mat pos))
   (:actual-vertices ()
    "return list of vertices(float-vector), it returns all vertices of this object"
    (let (ret)
@@ -761,6 +780,42 @@ if flat option is true, use-flat-shader"
              (nconc minfo (list (list :flat t))))
            ))
        )))
+  (:mirror-axis
+   (&key (create t) (invert-faces t) (axis :y))
+   "creating mirror vertices respect to :axis"
+   (case axis
+     (:x (setq axis 0))
+     (:y (setq axis 1))
+     (:z (setq axis 2)))
+   (let ((ret (copy-object mesh-list))
+         (p (instantiate float-vector 3)))
+     (dolist (mesh ret)
+       (let* ((vts (cadr (assoc :vertices mesh)))
+              (len (array-dimension vts 0)))
+         (when len
+           (dotimes (j len)
+             (user::c-matrix-row vts j p)
+             (setf (elt p axis) (- (elt p axis)))
+             (user::c-matrix-row vts j p t))
+           (when invert-faces
+             (let* ((idx (cadr (assoc :indices mesh)))
+                    (idx-len (/ (length idx) 3)) ;; mesh should be triangle
+                    i0 i1 i2)
+               (dotimes (i idx-len)
+                 (setq i0 (elt idx (* i 3))
+                       i1 (elt idx (+ (* i 3) 1))
+                       i2 (elt idx (+ (* i 3) 2)))
+                 (setf (elt idx (* i 3))       i2)
+                 (setf (elt idx (+ (* i 3) 1)) i1)
+                 (setf (elt idx (+ (* i 3) 2)) i0))
+               )))
+         ))
+     (if create
+         (instance glvertices :init ret)
+       (progn
+         (setq mesh-list ret)
+         self))
+     ))
   (:convert-to-faces (&rest args &key (wrt :local) &allow-other-keys) ;; check-normal <-> check-vertices-order, add face-color
    "create list of faces using vertices of this object"
    (let (ret)
@@ -921,13 +976,17 @@ if flat option is true, use-flat-shader"
            (cond
             (fcol ;; use :face-color
              (glColor3fv fcol)
-             (glMaterialfv GL_BACK  GL_AMBIENT_AND_DIFFUSE
-                           (if stransparent
-                               (concatenate float-vector fcol (float-vector stransparent))
-                             fcol))
-             (glMaterialfv GL_FRONT GL_AMBIENT_AND_DIFFUSE (if stransparent
-                                                               (float-vector 0.8 0.0 0.54 1)
-                                                             (float-vector 0.8 0.0 0.54)))
+             (cond
+              (stransparent
+               (glMaterialfv GL_BACK
+                             GL_AMBIENT_AND_DIFFUSE
+                             (concatenate float-vector fcol (float-vector stransparent)))
+               (glMaterialfv GL_FRONT
+                             GL_AMBIENT_AND_DIFFUSE (float-vector 0 0 0 0)))
+              (t
+               (glMaterialfv GL_BACK  GL_AMBIENT_AND_DIFFUSE fcol)
+               (glMaterialfv GL_FRONT GL_AMBIENT_AND_DIFFUSE (float-vector 0.8 0.0 0.54))
+               ))
              ;;(glMaterialfv GL_FRONT_AND_BACK GL_SPECULAR (float-vector 0.2 0.2 0.2 0.1))
              ;;(glMaterialfv GL_FRONT_AND_BACK GL_EMISSION (float-vector 0.1 0.1 0.1 0.1))
              )
@@ -951,19 +1010,19 @@ if flat option is true, use-flat-shader"
                                  col)))
                (when amb
                  (if stransparent
-                     (setf (elt amb 3) (float-vector stransparent)))
+                     (setf (elt amb 3) stransparent))
                  (glMaterialfv GL_BACK GL_AMBIENT amb))
                (when diff
                  (if stransparent
-                     (setf (elt diff 3) (float-vector stransparent)))
+                     (setf (elt diff 3) stransparent))
                  (glMaterialfv GL_BACK GL_DIFFUSE diff))
                (when spec
                  (if stransparent
-                     (setf (elt spec 3) (float-vector stransparent)))
+                     (setf (elt spec 3) stransparent))
                  (glMaterialfv GL_BACK GL_SPECULAR spec))
                (when emi
                  (if stransparent
-                     (setf (elt emi 3) (float-vector stransparent)))
+                     (setf (elt emi 3) stransparent))
                  (glMaterialfv GL_BACK GL_EMISSION emi))
                (cond
                 (shin
@@ -1002,6 +1061,9 @@ if flat option is true, use-flat-shader"
                    (glTexEnvi GL_TEXTURE_ENV GL_TEXTURE_ENV_MODE GL_MODULATE)
                    (glEnable GL_TEXTURE_2D)
                    ))
+               (when stransparent
+                 (glMaterialfv GL_FRONT
+                               GL_AMBIENT_AND_DIFFUSE (float-vector 0 0 0 0)))
                ))
             (t ;; default color
              ;; Font face was set CW at glview.l (glFrontFace GL_CW)
