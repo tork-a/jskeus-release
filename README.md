@@ -1,3 +1,24 @@
+## jskeus (indigo) - 1.0.9-0
+
+The packages in the `jskeus` repository were released into the `indigo` distro by running `/usr/bin/bloom-release jskeus --rosdistro indigo --track indigo` on `Thu, 09 Jul 2015 01:09:42 -0000`
+
+The `jskeus` package was released.
+
+Version of package(s) in repository `jskeus`:
+- upstream repository: https://github.com/euslisp/jskeus
+- release repository: https://github.com/tork-a/jskeus-release.git
+- rosdistro version: `1.0.8-0`
+- old version: `1.0.8-0`
+- new version: `1.0.9-0`
+
+Versions of tools used:
+- bloom version: `0.5.20`
+- catkin_pkg version: `0.2.8`
+- rosdep version: `0.11.2`
+- rosdistro version: `0.4.2`
+- vcstools version: `0.1.36`
+
+
 ## jskeus (jade) - 1.0.8-0
 
 The packages in the `jskeus` repository were released into the `jade` distro by running `/usr/bin/bloom-release --track jade --rosdistro jade jskeus` on `Sat, 20 Jun 2015 11:08:33 -0000`
