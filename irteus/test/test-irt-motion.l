@@ -406,6 +406,35 @@
            )))
    ))
 
+(defun test-ik-fail-log-with-dump-command-args-common
+  (robot)
+  (let ((log-directory (format nil "/tmp/irtmodel-ik-~A" (unix::getpid))) (ret))
+    (labels ((test-ik-with-log
+              (target-pos dump-command)
+              (unix:system (format nil "rm -f /tmp/irtmodel-ik-~A/*" (unix::getpid)))
+              (send robot :reset-pose)
+              (send robot :newcoords (make-coords))
+              (send robot :rarm :move-end-pos target-pos :world :debug-view :no-message :stop 10 :dump-command dump-command)))
+      ;; dump-command nil => no log files are generated.
+      (test-ik-with-log #f(10 0 0) nil)
+      (push (not (find-if #'(lambda (x) (substringp ".l" x)) (directory log-directory))) ret)
+      (test-ik-with-log #f(10000 0 0) nil)
+      (push (not (find-if #'(lambda (x) (substringp ".l" x)) (directory log-directory))) ret)
+      ;; dump-command :fail-only => log files are generated only if ik fail.
+      (test-ik-with-log #f(10 0 0) :fail-only)
+      (push (not (find-if #'(lambda (x) (substringp ".l" x)) (directory log-directory))) ret)
+      (test-ik-with-log #f(10000 0 0) :fail-only)
+      (push (find-if #'(lambda (x) (substringp ".l" x)) (directory log-directory)) ret)
+      ;; dump-command t => log files are generated always.
+      (test-ik-with-log #f(10 0 0) t)
+      (push (find-if #'(lambda (x) (substringp ".l" x)) (directory log-directory)) ret)
+      (test-ik-with-log #f(10000 0 0) t)
+      (push (find-if #'(lambda (x) (substringp ".l" x)) (directory log-directory)) ret)
+      ;; return
+      (unix:system (format nil "rm -f /tmp/irtmodel-ik-~A/*" (unix::getpid)))
+      (reverse ret)
+      )))
+
 ;; check torque calculation comparing methods to calculate ext-force and ext-moment and robot root-link configuration
 (defun draw-objects-torque
   (robot tq)
@@ -674,6 +703,29 @@
         (every #'identity check-results)
         ))))
 
+;; test for collision check
+(defun test-self-collision-check-IK
+  ()
+  (defmethod sample-robot
+    (:collision-check-pairs
+     (&key ((:links ls) (list (car (send self :links))
+                              (elt (send self :rarm :links) 2)
+                              (elt (send self :rarm :links) 3))))
+     (send-super :collision-check-pairs :links ls)))
+  (labels ((test-ik
+            (check-collision)
+            (send *sample-robot* :reset-pose)
+            (send *sample-robot* :fix-leg-to-coords (make-coords))
+            (send *sample-robot* :rarm :move-end-pos #f(50 300 0) :world :rotation-axis nil :check-collision check-collision :warnp nil)))
+    (prog1
+        (and (test-ik nil) (not (test-ik t)))
+      (defmethod sample-robot
+        (:collision-check-pairs
+         (&key ((:links ls) (cons (car links) (all-child-links (car links)))))
+         (send-super :collision-check-pairs :links ls)))
+      )
+    ))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; unit tests
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -723,6 +775,9 @@
 (deftest test-load-ik-fail-log-dual-arm-ik-for-sample-robot
   (assert (test-load-ik-fail-log-dual-arm-ik-common *sample-robot*)))
 
+(deftest test-ik-fail-log-with-dump-command-args-for-sample-robot
+  (assert (every #'identity (test-ik-fail-log-with-dump-command-args-common *sample-robot*))))
+
 (deftest test-all-for-arm-robot-static-1
   (assert
    (test-all-for-sample-multidof-arm-robot :static-p t :fix-pos #f(0 0 0))))
@@ -735,6 +790,10 @@
 (deftest test-all-for-sample-robot-static-2
   (assert
    (test-all-for-sample-robot :static-p t :fix-pos #f(100 200 300))))
+
+(deftest test-self-collision-check-IK-test
+  (assert
+   (test-self-collision-check-IK)))
 
 (run-all-tests)
 (exit 0)
