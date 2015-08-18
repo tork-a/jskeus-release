@@ -64,13 +64,61 @@
           (mapcar #'(lambda (rs-list) (not (some #'null (mapcar #'(lambda (x) (cadr (memq :angle-vector x))) rs-list))))
                   (walk-motion-for-robots)))))
 
-(deftest test-test-preview-control
+(deftest test-test-preview-control-0
   (assert
-   (every #'identity (test-preview-control))))
+   (every #'identity (test-preview-control-0))))
+
+(deftest test-test-extended-preview-control-0
+  (assert
+   (every #'identity (test-preview-control-0 :preview-controller-class extended-preview-controller))))
+
+(deftest test-test-preview-control-1
+  (assert
+   (every #'identity (test-preview-control-1))))
+
+(deftest test-test-extended-preview-control-1
+  (assert
+   (every #'identity (test-preview-control-1 :preview-controller-class extended-preview-controller))))
+
+(deftest test-test-preview-control-2
+  (assert
+   (every #'identity (test-preview-control-2))))
+
+(deftest test-test-extended-preview-control-2
+  (assert
+   (every #'identity (test-preview-control-2 :preview-controller-class extended-preview-controller))))
+
+(deftest test-test-preview-control-3
+  (assert
+   (every #'identity (test-preview-control-3))))
+
+(deftest test-test-extended-preview-control-3
+  (assert
+   (every #'identity (test-preview-control-3 :preview-controller-class extended-preview-controller))))
 
 (deftest test-test-preview-control-dynamics-filter-for-sample-robot
   (assert
    (every #'identity (test-preview-control-dynamics-filter-for-sample-robot))))
+
+(deftest test-test-extended-preview-control-dynamics-filter-for-sample-robot
+  (assert
+   (every #'identity (test-preview-control-dynamics-filter-for-sample-robot :preview-controller-class extended-preview-controller))))
+
+(deftest test-test-sample-1dof-closed-link-robot
+  (assert
+   (every #'identity (test-sample-1dof-closed-link-robot))))
+
+(deftest test-test-sample-2dof-closed-link-robot
+  (assert
+   (every #'identity (test-sample-2dof-closed-link-robot))))
+
+(deftest test-test-interlocking-joint-arm
+  (assert
+   (test-interlocking-joint-arm)))
+
+(deftest test-test-sample-legged-robot-with-interlocking-joints
+  (assert
+   (test-sample-legged-robot-with-interlocking-joints)))
 
 (run-all-tests)
 (exit)
