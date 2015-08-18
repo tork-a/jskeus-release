@@ -881,12 +881,17 @@ if flat option is true, use-flat-shader"
                     (flatten (send* self :convert-to-faces args)))))
      (send fs :transform (send self :worldcoords))
      fs))
-  (:set-offset (cds)
+  (:set-offset (cds &key (create))
    "move vertices in this object using given coordinates, this method change values of vertices. coordinates's method such as :transform just change view of this object"
    (let* ((zero (float-vector 0 0 0))
           (wpos (send cds :worldpos))
-          (wrot (send cds :worldrot)))
-     (dolist (minfo mesh-list)
+          (wrot (send cds :worldrot))
+          ret)
+     (if create
+         (setq ret
+               (instance glvertices :init (copy-object mesh-list)))
+       (setq ret self))
+     (dolist (minfo (ret . mesh-list))
        (let ((vmat (cadr (assoc :vertices minfo)))
              (nmat (cadr (assoc :normals minfo))))
          (user::c-coords-transform-vector
@@ -894,7 +899,13 @@ if flat option is true, use-flat-shader"
          (when nmat
            (user::c-coords-transform-vector
             zero wrot nmat nmat))))
-     self))
+     ret))
+  (:convert-to-world (&key (create))
+   "move vertices in this object using self's coordinates. vertices data should be moved as the same as displayed"
+   (let ((ret (send self :set-offset (send self :worldcoords) :create create)))
+     (send ret :reset-coords)
+     (send self :worldcoords)
+     ret))
   (:glvertices (&optional (name) (test #'string=))
    "create individual glvertices objects from mesh-list. if name is given, search mesh has the same name"
    (let (ret)
@@ -1159,16 +1170,16 @@ if flat option is true, use-flat-shader"
 ;;;
 (defclass glbody
   :super body
-  :slots (glvertices)
+  :slots (aglvertices)
   )
 (defmethod glbody
-  (:glvertices (&rest args) (forward-message-to glvertices args))
+  (:glvertices (&rest args) (user::forward-message-to aglvertices args))
   (:draw (vwr)
-   (when glvertices
-     (send glvertices :draw vwr)))
+   (when aglvertices
+     (send aglvertices :draw vwr)))
   (:set-color (&rest args)
    (send-super* :set-color args)
-   (when glvertices (send* glvertices :set-color args)))
+   (when aglvertices (send* aglvertices :set-color args)))
   )
 
 ;;; glvertices utility
@@ -1225,6 +1236,93 @@ flst is list of geomatry::face"
         (push (list :material material) msh))
       (instance gl::glvertices :init (list msh)))
     ))
+
+(defun _dump-wrl-shape (strm mesh &key ((:scale scl) 1.0) (use_ambient nil)
+                             (use_normal nil) (use_texture nil)
+                             &allow-other-keys)
+  (let* ((tp   (cadr (assoc :type      mesh))) ;; type should be :triangle
+         (indx (cadr (assoc :indices   mesh))) ;; should have index
+         (vmat (cadr (assoc :vertices  mesh)))
+         (matl (cadr (assoc :material  mesh)))
+         (tcds (cadr (assoc :texcoords mesh)))
+         (nmat (cadr (assoc :normals mesh)))
+         (len (/ (length (array-entity vmat)) 3)))
+    (format strm "    Shape {~%")
+    (let ((col   (cadr (assoc :color matl)))
+          (amb   (cadr (assoc :ambient matl)))
+          (diff  (cadr (assoc :diffuse matl)))
+          (spec  (cadr (assoc :specular matl)))
+          (emi   (cadr (assoc :emission matl)))
+          (shin  (cadr (assoc :shininess matl)))
+          (trans (cadr (assoc :transparency matl)))
+          (matfile (cadr (assoc :filename matl))))
+      (format strm "      appearance Appearance {
+        material Material {~%")
+      (if diff
+          (format strm "          diffuseColor     ~A ~A ~A~%" (elt diff 0) (elt diff 1) (elt diff 2)))
+      (if (and use_ambient amb)
+          (format strm "          diffuseColor     ~A ~A ~A~%" (elt amb 0) (elt amb 1) (elt amb 2)))
+      (if spec
+          (format strm "          specularColor    ~A ~A ~A~%" (elt spec 0) (elt spec 1) (elt spec 2)))
+      (if emi
+          (format strm "          emissiveColor    ~A ~A ~A~%" (elt emi 0) (elt emi 1) (elt emi 2)))
+      (if shin
+          (format strm "          shininess        ~A~%" shin))
+      (if trans
+          (format strm "          transparency     ~A~%" trans))
+      (format strm "          ambientIntensity 0~%") ;; ??
+      (format strm "        }~%")
+      (format strm "      }~%" )
+      )
+    (format strm "      geometry IndexedFaceSet {
+        ccw    TRUE
+        convex TRUE
+        solid  FALSE
+        creaseAngle 0
+        coord  Coordinate {
+          point [~%")
+    (let ((p (float-vector 0 0 0)))
+      (dotimes (i len)
+        (user::c-matrix-row vmat i p)
+        (format strm "~8,8f ~8,8f ~8,8f,~%" (* scl (elt p 0)) (* scl (elt p 1)) (* scl (elt p 2)))
+        ))
+    (format strm "                ]
+        }~%")
+    (when (and use_normal nmat)
+    ;;;; normal
+    ;;(format strm "        normal Normal { vector [~%")
+    ;; nx ny nz,
+    ;;(format strm "        ] } #normal~%")
+      )
+    (when (and use_texture tcds)
+    ;;;; texcoords
+    ;;(format strm "        texCoord TextureCoordinate { point [~%")
+    ;; t s,
+    ;;(format strm "        ] } #texCoord~%")
+      )
+    (format strm "        coordIndex [~%")
+    (dotimes (i (/ (length indx) 3))
+      (format strm "~D, ~D, ~D, -1,~%"
+              (elt indx    (* i 3))
+              (elt indx (+ (* i 3) 1))
+              (elt indx (+ (* i 3) 2))))
+    (format strm "        ]
+      } #IndexedFaceSet
+    } #Shape~%")
+    ))
+
+(defun write-wrl-from-glvertices (fname glv &rest args)
+  "write .wrl file from instance of glvertices"
+  (let ((mesh-list (glv . gl::mesh-list)))
+    (with-open-file
+     (strm fname :direction :output)
+     (format strm "Transform {~%")
+     (format strm "  children [~%")
+     (dolist (mesh mesh-list)
+       (apply #'_dump-wrl-shape strm mesh args))
+     (format strm "  ] #children~%")
+     (format strm "} #Transform~%")
+     )))
 
 #| ;; sample of glvertices
 (setq ver-lst (list
