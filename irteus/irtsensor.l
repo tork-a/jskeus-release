@@ -78,14 +78,14 @@
                    (:projection :newprojection
                     :view :viewpoint :view-direction :viewdistance
                     :yon :hither))
-          pwidth pheight))
+          img-viewer pwidth pheight))
 (defmethod camera-model
   (:init
    (b &rest args
           &key
           ((:width pw) 320) ((:height ph) 240)
           (view-up #f(0 1 0))
-          (viewdistance 5.0)
+          (viewdistance 100.0)
           (hither 100.0)
           (yon 10000.0)
           &allow-other-keys)
@@ -104,11 +104,33 @@
                       :screen 1.0
                       args
                       ))
+     (send vwing :screen (/ (* viewdistance pw 0.5) viewdistance) (/ (* viewdistance ph 0.5) viewdistance))
      (send self :assoc vwing)
+     (send self :newprojection
+           (make-matrix 4 4
+                        (list (float-vector  viewdistance 0  (/ pw 2) 0) ;; f = 1, t  =0
+                              (float-vector  0  viewdistance (/ ph 2) 0) ;;
+                              (float-vector  0  0  1  0)
+                              (float-vector  0  0  0  1))))
      self))
+  (:create-viewer (&optional cv)
+   "Create camera viewer, or set viewer"
+   (unless (boundp '*irtviewer*) (make-irtviewer))
+   (unless cv
+     (setq cv
+          (view
+           :x pwidth :y pheight
+           :viewing (send self :viewing)
+           :viewsurface
+           (instance gl::glviewsurface :create
+                     :glcon ((send *irtviewer* :viewer :viewsurface) . gl::glcon)
+                     :title (format nil "~A_view" (send self :name)) :width pwidth :height pheight)
+           :title (format nil "~A_view" (send self :name)))))
+   (setq img-viewer cv))
   (:width () "Returns width of the camera in pixel." pwidth)
   (:height () "Returns height of the camera in pixel." pheight)
   (:viewing (&rest args) (forward-message-to vwing args))
+  (:image-viewer (&rest args) (forward-message-to img-viewer args))
   (:fovy () "Returns field of view in degree"
    (let ((proj (send vwing :projection)))
      (* 2 (atan2 (/ pwidth 2.0) (aref proj 0 0)))))
@@ -159,6 +181,7 @@
                               viewdistance)))))
   (:draw-on
    (&rest args &key ((:viewer vwer) user::*viewer*) &allow-other-keys)
+   "Draw camera raw in irtviewer, ex (send cam :draw-on :flush t)"
    (send* self :draw-sensor vwer args))
   (:draw-sensor
    (vwer &key flush (width 1) (color (float-vector 1 1 1)))
@@ -190,7 +213,11 @@
      (send vwer :viewsurface :color pcolor)
      (gl::draw-glbody vwer self)
      (if flush (send vwer :viewsurface :flush))))
-  (:draw-objects
+  (:draw-objects (objs)
+   "Draw objects in camera view"
+   (unless img-viewer (send self :create-viewer))
+   (send self :draw-objects-raw img-viewer objs))
+  (:draw-objects-raw
    (vwr objs)
    (let* (pcurrent pcolor (draw-things (x::draw-things objs))
                    viewpoint viewtarget
@@ -199,22 +226,42 @@
                    (f  (aref proj 0 0)))
      (send vwr :viewsurface :makecurrent)
      ;;(resetperspective (send vwr :viewing) (send vwr :viewsurface))
+     (if (> pwidth pheight)
+         (gl::glviewport 0 (- (/ (- pwidth pheight) 2)) pwidth pwidth)
+       (gl::glviewport (- (/ (- pheight pwidth) 2)) 0 pheight pheight))
      (gl::glMatrixMode gl::GL_PROJECTION)
      (gl::glLoadIdentity)
-     ;; the following should get aspect ration from viewport
-     (gl::gluPerspectivefv (float-vector (rad2deg (send self :fovy))
-                                         1.0
-                                         (send self :viewing :hither)
-                                         (send self :viewing :yon)))
-     (setq viewpoint
-           (v+ (send self :worldpos) ;; for right camera
-               (send self :viewing :rotate-vector
-                     (scale 1000.0 (float-vector (/ (- (- (/  pwidth 2.0) 1) cx) f)
-                                                 (/ (- (- (/ pheight 2.0) 1) cy) f)
-                                                 0)))))
+     (let ((fv (instantiate float-vector 16)))
+       ;; projection matrix on OpenGL
+       ;; f 0  A 0
+       ;; 0 f  B 0
+       ;; 0 0  C D
+       ;; 0 0 -1 0
+       (setf (elt fv 0) (/ 1.0 (tan (/ (send self :fovy) 2.0)))) ;; f
+       (setf (elt fv 5) (elt fv 0)) ;; f
+       (setf (elt fv 8)
+             (/ (* 2 (- (/ (1- pwidth) 2.0) cx))
+                (if (> pwidth pheight) pwidth pheight))) ;; A
+       (setf (elt fv 9)
+             (/ (* -2 (- (/ (1- pheight) 2.0) cy))
+                (if (> pwidth pheight) pwidth pheight))) ;; B
+       (setf (elt fv 10)
+             (/ (+ (send self :viewing :yon)
+                   (send self :viewing :hither))
+                (- (send self :viewing :hither)
+                   (send self :viewing :yon)))) ;; C
+       (setf (elt fv 14)
+             (/ (* 2 (send self :viewing :yon)
+                   (send self :viewing :hither))
+                (- (send self :viewing :hither)
+                   (send self :viewing :yon)))) ;; D
+       (setf (elt fv 11) -1)
+       (gl::glMultMatrixd fv))
+
+     (setq viewpoint (send self :worldpos))
      ;; glview define view-directoin to oppsite direction
      (setq viewtarget
-           (v- viewpoint (send self :viewing :view-direction) ))
+           (v- viewpoint (send self :viewing :view-direction)))
      (gl::gluLookAtfv (concatenate vector viewpoint viewtarget
                                    (v- (send self :viewing :view-up))))
      (gl::glMatrixMode gl::GL_MODELVIEW)
@@ -236,7 +283,28 @@
        )
      (send vwr :viewsurface :flush)
      ))
-  (:get-image (vwr &key (points) (colors))
+  (:get-image
+   (&key (with-points) (with-colors))
+   "Get image objects you need to call :draw-objects before calling this function"
+   (let (points colors img pc)
+     (if with-points
+         (setq points (make-matrix (* pwidth pheight) 3)))
+     (if with-colors
+         (setq colors (make-matrix (* pwidth pheight) 3)))
+     (setq img (send self :get-image-raw img-viewer :points points :colors colors))
+     (cond
+      ((and with-points with-colors)
+       (setq pc (instance pointcloud :init
+                          :height pheight :width pwidth
+                          :points points :colors colors)))
+      (with-points
+       (setq pc (instance pointcloud :init
+                          :height pheight :width pwidth
+                          :points points))))
+     (if with-points
+         (cons img pc)
+       img)))
+  (:get-image-raw (vwr &key (points) (colors))
    (let* ((sf (send vwr :viewsurface))
           (width (send sf :width))
           (height (send sf :height))
@@ -256,7 +324,7 @@
      (when points
        (unless (and (= width pwidth) (= height pheight))
          (warn ";; width: %d /= %d or height: %d /= %d~%" width pwidth height pheight)
-         (return-from :get-image))
+         (return-from :get-image-raw))
        (setq fv (make-array num :element-type :float))
        (setq mat-ent (array-entity points))
        (fill mat-ent 0.0)
@@ -271,9 +339,10 @@
          (dotimes (x width)
            (if (< (elt fv vptr) 1.0)
                (let ((zpos (/ (* fp np) (- (* (elt fv vptr) (- fp np)) fp))))
+                 (setq mptr (* 3 (+ (* (- height y 1) width) x)))
                  (setf (elt pos 0) (* (- cx x) (/ zpos focus)))
-                 (setf (elt pos 1) (* (- y cy) (/ zpos focus)))
-                 (setf (elt pos 2) (- zpos))
+                 (setf (elt pos 1) (* (- cy (- height y 1)) (/ zpos focus)))
+                 (setf (elt pos 2) (- zpos)) ;; ok
                  (sys::vector-replace mat-ent pos mptr)
                  (when colors
                    (setf (elt col 0)
@@ -283,7 +352,6 @@
                    (setf (elt col 2)
                          (/ (sys::peek img-ent (+ mptr 2) :byte) 255.0))
                    (sys::vector-replace col-ent col mptr))))
-           (incf mptr 3)
            (incf vptr 1)
            )))
      img
@@ -291,7 +359,8 @@
   )
 
 ;; utility functions
-(defun make-camera-from-param (&key pwidth pheight fx fy cx cy (tx 0) (ty 0) parent-coords name)
+(defun make-camera-from-param (&key pwidth pheight fx fy cx cy (tx 0) (ty 0) parent-coords name
+                                    create-viewer)
   "Create camera object from given parameters."
   (let* ((b (body+ (make-cube 40 30 30)
                    (send (make-cylinder 2 30) :rotate pi/2 :x)
@@ -310,8 +379,8 @@
     (send c :translate (float-vector (- tx) (- ty) 0))
     (send (c . vwing) :translate (float-vector tx ty 0))
     (if parent-coords (send parent-coords :assoc c))
+    (if create-viewer (send c :create-viewer))
     c))
-
 
 (in-package "GEOMETRY")
 
