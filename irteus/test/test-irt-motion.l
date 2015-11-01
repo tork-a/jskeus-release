@@ -6,6 +6,7 @@
 (load "irteus/demo/sample-robot-model.l")
 (load "irteus/demo/sample-arm-model.l")
 (load "irteus/demo/sample-multidof-arm-model.l")
+(load "irteus/demo/special-joints.l")
 (unless (boundp '*sample-robot*)
   (setq *sample-robot* (instance sample-robot :init))
   (unless (or (null x::*display*) (= x::*display* 0))
@@ -353,13 +354,15 @@
             (log-directory)
             (remove-if-not #'(lambda (x) (substringp (format nil "~A-" (send (class robot) :name)) x)) (directory log-directory))))
     (let* ((log-directory (format nil "/tmp/irtmodel-ik-~A" (unix::getpid)))
-           (prev-log-files (find-log-files log-directory)))
+           (prev-log-files))
+      (unix:system (format nil "rm -f ~A/*" log-directory)) ;; clear log file
+      (setq prev-log-files (find-log-files log-directory))
       (funcall ik-function robot)
       (let ((new-log-file ;; find latest log
              (car (remove-if #'(lambda (x) (member x prev-log-files :test #'string=)) (find-log-files log-directory)))))
         ;; ik log execution
         (progn (load (format nil "~A/~A" log-directory new-log-file))(ik-setup)(null-output (ik-check)))
-        (unix:system (format nil "rm -f ~A/~A" log-directory new-log-file)) ;; clear log file
+        (unix:system (format nil "rm -f ~A/*" log-directory)) ;; clear log file
         t))))
 
 (defun test-load-ik-fail-log-rarm-ik-common
@@ -434,6 +437,52 @@
       (unix:system (format nil "rm -f /tmp/irtmodel-ik-~A/*" (unix::getpid)))
       (reverse ret)
       )))
+
+(defun test-load-ik-debug-information-log-common
+  (dump-command &key (debug-view t))
+  (labels ((find-log-files
+            (log-directory robot)
+            (remove-if-not #'(lambda (x) (substringp (format nil "~A-" (send (class robot) :name)) x)) (directory log-directory))))
+    (let* ((robot (instance sample-legged-robot-with-interlocking-joints :init))
+           (log-directory (format nil "/tmp/irtmodel-ik-~A" (unix::getpid)))
+           (prev-log-files (find-log-files log-directory robot)))
+      (unix:system (format nil "rm -f ~A/*" log-directory)) ;; clear log file
+      ;; Initialize poses
+      (send robot :rleg :angle-vector #f(0.0 0.0 -40.0 40.0 40.0 -40.0 0.0))
+      (send robot :lleg :angle-vector #f(0.0 0.0 -40.0 40.0 40.0 -40.0 0.0))
+      (send robot :fix-leg-to-coords (make-coords))
+      ;; IK
+      (send robot :move-centroid-on-foot :both '(:rleg :lleg) :dump-command dump-command :target-centroid-pos (float-vector 20 0 0))
+      ;; Chceck log
+      (let* ((new-log-files (remove-if #'(lambda (x) (member x prev-log-files :test #'string=)) (find-log-files log-directory robot)))
+             (new-log-file ;; find latest log
+              (car new-log-files))
+             (ret t))
+        ;; ik log load
+        (when dump-command
+          (mapcar #'(lambda (lf) (load (format nil "~A/~A" log-directory lf))) new-log-files)
+          (when (eq dump-command :always-with-debug-log)
+            (setq ret (and (numberp *ik-loop*)
+                           (not (cdr (assoc :target-0 *ik-target-error*)))
+                           (not (cdr (assoc :target-1 *ik-target-error*)))
+                           (not (cdr (assoc :centroid *ik-target-error*)))
+                           (not (cdr (assoc :additional-0 *ik-target-error*)))))
+            ))
+        (if debug-view (format t ";; files ~A~%" new-log-files))
+        (prog1
+            (case
+             dump-command
+             ((t :always)
+              (and (not (find-if #'(lambda (x) (substringp "debug-log.l" x)) new-log-files))
+                   (find-if #'(lambda (x) (substringp "success.l" x)) new-log-files)))
+             (:always-with-debug-log
+              (and ret
+                   (find-if #'(lambda (x) (substringp "debug-log.l" x)) new-log-files)
+                   (find-if #'(lambda (x) (substringp "success.l" x)) new-log-files)))
+             (nil
+              (= (length new-log-files) 0))))
+        (unix:system (format nil "rm -f ~A/*" log-directory)) ;; clear log file
+        t))))
 
 ;; check torque calculation comparing methods to calculate ext-force and ext-moment and robot root-link configuration
 (defun draw-objects-torque
@@ -726,6 +775,35 @@
       )
     ))
 
+;; test for static balance point
+(defun fullbody-ik-with-forces (robot &key (debug-view :no-message))
+  (send robot :newcoords (make-coords))
+  (send robot :reset-pose)
+  (send robot :fix-leg-to-coords (make-coords))
+  (send robot :legs :move-end-pos (float-vector 0 0 50))
+  (send robot :fix-leg-to-coords (make-coords))
+  (objects (list robot))
+  (let* ((centroid-thre 10)
+         (result
+          (send robot :fullbody-inverse-kinematics
+                (list (send robot :rleg :end-coords :copy-worldcoords)
+                      (send robot :lleg :end-coords :copy-worldcoords)
+                      (make-coords :pos #f(150 -300 600))
+                      (make-coords :pos #f(150 300 600)))
+                :move-target (mapcar #'(lambda (x)
+                                         (send robot x :end-coords))
+                                     (list :rleg :lleg :rarm :larm))
+                :link-list (mapcar #'(lambda (x)
+                                       (send robot :link-list (send robot x :end-coords :parent)))
+                                   (list :rleg :lleg :rarm :larm))
+                :centroid-thre centroid-thre
+                :centroid-offset-func #'(lambda () (send robot :calc-static-balance-point :force-list (list #f(10 20 0) #f(25 20 0))))
+                :debug-view debug-view)))
+    (and result
+         (> centroid-thre (distance (apply #'midpoint 0.5 (send robot :legs :end-coords :worldpos))
+                                    (send robot :calc-static-balance-point :force-list (list #f(10 20 0) #f(25 20 0))))))
+    ))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; unit tests
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -778,6 +856,10 @@
 (deftest test-ik-fail-log-with-dump-command-args-for-sample-robot
   (assert (every #'identity (test-ik-fail-log-with-dump-command-args-common *sample-robot*))))
 
+(deftest test-load-ik-debug-information-log
+  (assert (every #'identity
+                 (mapcar #'(lambda (dc) (test-load-ik-debug-information-log-common dc)) '(t :always :always-with-debug-log nil)))))
+
 (deftest test-all-for-arm-robot-static-1
   (assert
    (test-all-for-sample-multidof-arm-robot :static-p t :fix-pos #f(0 0 0))))
@@ -794,6 +876,10 @@
 (deftest test-self-collision-check-IK-test
   (assert
    (test-self-collision-check-IK)))
+
+(deftest test-fullbody-ik-with-forces-samplerobot
+  (assert
+   (fullbody-ik-with-forces *sample-robot*)))
 
 (run-all-tests)
 (exit 0)
