@@ -28,7 +28,9 @@ endif()")
 
 install(DIRECTORY doc
    DESTINATION share/jskeus/
-   USE_SOURCE_PERMISSIONS)
+   USE_SOURCE_PERMISSIONS
+   PATTERN "doc/fig" EXCLUDE
+   PATTERN "doc/*.tex" EXCLUDE)
 install(DIRECTORY irteus
    DESTINATION share/euslisp/jskeus/
    USE_SOURCE_PERMISSIONS)
