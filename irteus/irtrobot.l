@@ -97,18 +97,31 @@
                                                      head-end-coords torso-end-coords))))
      )
    )
+  ;; End-coords accessor
+  (:rarm-end-coords () rarm-end-coords)
+  (:larm-end-coords () larm-end-coords)
+  (:rleg-end-coords () rleg-end-coords)
+  (:lleg-end-coords () lleg-end-coords)
+  (:head-end-coords () head-end-coords)
+  (:torso-end-coords () torso-end-coords)
+  ;; Root-link accessor
+  (:rarm-root-link () rarm-root-link)
+  (:larm-root-link () larm-root-link)
+  (:rleg-root-link () rleg-root-link)
+  (:lleg-root-link () lleg-root-link)
+  (:head-root-link () head-root-link)
+  (:torso-root-link () torso-root-link)
   (:limb
    (limb method &rest args)
    (let (ret)
      (case method
        (:end-coords 
 	(user::forward-message-to 
-	 (cdr (assoc (intern (format nil "~A-END-COORDS" (string-upcase limb)))
-		     (send self :slots)))
+         (send self (read-from-string (format nil "~A-END-COORDS" limb)))
 	 args))
        (:root-link
 	(user::forward-message-to 
-	 (cdr (assoc (intern (format nil "~A-ROOT-LINK" (string-upcase limb))) (send self :slots)))
+         (send self (read-from-string (format nil "~A-ROOT-LINK" limb)))
 	 args))
        (:angle-vector
 	(if args
@@ -658,7 +671,7 @@
      (funcall init-pose-function)
      ;; initial move centroid on foot
      (send gg :initialize-gait-parameter
-           footstep-list default-step-time (send (car (send self :links)) :get :c-til)
+           footstep-list default-step-time (send self :centroid)
            :default-step-height default-step-height :default-double-support-ratio 0.2
            :default-zmp-offsets dzo :all-limbs al
            :thre ik-thre :rthre ik-rthre
@@ -1001,10 +1014,10 @@
     force-list [N] and moment-list [Nm] are list of force and moment at target-points.
     static-balance-point-height is height of static balance point [mm]."
    (let* ((sbp (float-vector 0 0 static-balance-point-height))
-          (mg (* 1e-6 (send self :weight nil) (elt *g-vec* 2))))
+          (mg (* 1e-6 (send self :weight update-mass-properties) (elt *g-vec* 2))))
      (dotimes (idx 2)
        (let ((denom mg)
-             (nume (* mg (elt (send self :centroid update-mass-properties) idx))))
+             (nume (* mg (elt (send self :centroid nil) idx))))
          (mapcar #'(lambda (f m tp)
                      (setq nume
                            (+ nume
