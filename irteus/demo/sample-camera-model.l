@@ -69,10 +69,17 @@
   ;; transform origin of point cloud
   (send *points* :transform (send *camera-model* :worldcoords))
 
-  (objects (list *points* *obj1* *obj2* *obj3* *camera-model*))
-  (send *camera-model* :draw-objects (list *points* *obj1* *obj2* *obj3*))
-  (send *camera-model* :draw-objects (list *points* *obj1* *obj2* *obj3*))
+  (objects (list *points* *camera-model*))
+  (send *camera-model* :draw-objects (list *points*))
+  (send *camera-model* :draw-objects (list *points*))
   (image::write-pnm-file "sample-get-camera-image-2b.ppm" (send *camera-model* :get-image))
+
+  ;; drawing objects with hidden line mode
+  (send (*camera-model* . img-viewer) :viewsurface :line-width 2)
+  (send *camera-model* :select-drawmode 'hid (list *obj1* *obj2* *obj3*))
+  (send *camera-model* :draw-objects (list *obj1* *obj2* *obj3*))
+  (send *camera-model* :draw-objects (list *obj1* *obj2* *obj3*));;??
+  (image::write-pnm-file "sample-get-camera-image-2c.ppm" (send *camera-model* :get-image))
   )
 
 
