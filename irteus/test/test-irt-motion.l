@@ -337,6 +337,32 @@
        ))
     (list max-dif-pos max-dif-rot)))
 
+(defun test-zero-orientation-of-joint-class-common
+  (joint-class)
+  "Check zero setting for orientation of 6dof-joint and sphere-joint.
+   If zero vector is set as :joint-angle :relative t, worldrot should not change."
+  ;; Initialize
+  (setq *robot* (instance sample-multidof-joint-robot :init :joint-class joint-class
+                          :child-init-coords (make-coords :pos #f(100 200 300) :rpy (list (deg2rad 10) (deg2rad 20) (deg2rad 30)))))
+  (unless (or (null x::*display*) (= x::*display* 0))
+    (objects (list *robot*)))
+  (if (= (length (send *robot* :angle-vector)) 3)
+      (send *robot* :angle-vector #f(15.1 -25.2 35.3))
+    (send *robot* :angle-vector #f(20.0 -30.0 40.0 15.1 -25.2 35.3)))
+  (let ((rot1) (rot2))
+    ;; Rot before :joint-angle :relative t setting
+    (setq rot1 (copy-object (send (send (car (send *robot* :joint-list)) :child-link) :worldrot)))
+    (send (car (send *robot* :joint-list)) :joint-angle (if (= (length (send *robot* :angle-vector)) 3)
+                                                            (float-vector 0 0 0)
+                                                          (float-vector 0 0 0 0 0 0))
+          :relative t)
+    ;; Rot after :joint-angle :relative t setting
+    (setq rot2 (copy-object (send (send (car (send *robot* :joint-list)) :child-link) :worldrot)))
+    ;;(print (array-entity (m- rot1 rot2)))
+    ;; rot1 and rot2 should be same, otherwise it is numerical error.
+    (eps= (norm (array-entity (m- rot1 rot2))) 0.0 1e-20)
+    ))
+
 ;; test :cog-convergence-check
 (defun test-cog-convergence-check-common
   (robot)
@@ -841,6 +867,12 @@
       (> 0.05 (elt ret 0))
       (> (deg2rad 1e-2) (elt ret 1))))))
 
+(deftest test-zero-orientation-of-joint-class
+  (assert
+   (test-zero-orientation-of-joint-class-common sphere-joint))
+  (assert
+   (test-zero-orientation-of-joint-class-common 6dof-joint)))
+
 (deftest test-load-ik-fail-log-rarm-ik-for-sample-robot
   (assert (test-load-ik-fail-log-rarm-ik-common *sample-robot*)))
 
@@ -880,6 +912,90 @@
 (deftest test-fullbody-ik-with-forces-samplerobot
   (assert
    (fullbody-ik-with-forces *sample-robot*)))
+
+(deftest test-fullbody-ik-draw-param-check-samplerobot
+  (dotimes (i 5) (send *sample-robot* :move-centroid-on-foot :both '(:rleg :lleg)))
+  (assert
+   (not (> (length (send *sample-robot* :get :ik-draw-on-params)) 0))))
+
+;; Test calling calc-walk-pattern-from-footstep-list N times
+;;   This test is for bug reported in https://github.com/euslisp/jskeus/issues/286.
+(deftest test-samplerobot-walk-pattern-Ntimes
+  (let ((av-list) (cog0) (cog1) (cog2))
+    ;; case 0 : side step with initialize and with :init-pose-function
+    (send *sample-robot* :reset-pose)
+    (send *sample-robot* :fix-leg-to-coords (make-coords))
+    (setq av-list (send *sample-robot* :calc-walk-pattern-from-footstep-list
+                        (list (make-coords :coords (send *sample-robot* :rleg :end-coords :copy-worldcoords) :name :rleg)
+                              (make-coords :coords (send (send *sample-robot* :lleg :end-coords :copy-worldcoords) :translate (float-vector 0 100 0)) :name :lleg)
+                              (make-coords :coords (send (send *sample-robot* :rleg :end-coords :copy-worldcoords) :translate (float-vector 0 100 0)) :name :rleg))))
+    (setq cog0 (cadr (memq :cog (car av-list))))
+    ;; case 1 : side step with initialize but without :init-pose-function
+    (send *sample-robot* :reset-pose)
+    (send *sample-robot* :fix-leg-to-coords (make-coords))
+    (setq av-list (send *sample-robot* :calc-walk-pattern-from-footstep-list
+                        (list (make-coords :coords (send *sample-robot* :rleg :end-coords :copy-worldcoords) :name :rleg)
+                              (make-coords :coords (send (send *sample-robot* :lleg :end-coords :copy-worldcoords) :translate (float-vector 0 100 0)) :name :lleg)
+                              (make-coords :coords (send (send *sample-robot* :rleg :end-coords :copy-worldcoords) :translate (float-vector 0 100 0)) :name :rleg))
+                        :init-pose-function #'(lambda ())))
+    (setq cog1 (cadr (memq :cog (car av-list))))
+    ;; case 2 : side step without initialize and with :init-pose-function
+    (setq av-list (send *sample-robot* :calc-walk-pattern-from-footstep-list
+                        (list (make-coords :coords (send *sample-robot* :rleg :end-coords :copy-worldcoords) :name :rleg)
+                              (make-coords :coords (send (send *sample-robot* :lleg :end-coords :copy-worldcoords) :translate (float-vector 0 100 0)) :name :lleg)
+                              (make-coords :coords (send (send *sample-robot* :rleg :end-coords :copy-worldcoords) :translate (float-vector 0 100 0)) :name :rleg))))
+    (setq cog2 (cadr (memq :cog (car av-list))))
+    (assert (eps= (elt cog0 1) (elt cog1 1) 0.5))
+    (assert (eps= (elt cog0 1) (- (elt cog2 1) 100) 0.5))
+    ))
+
+(deftest test-samplerobot-static-balance-point
+  (let* ((tmp-robot (instance sample-robot :init))
+         (sbp1 (send tmp-robot :calc-static-balance-point))
+         (sbp2 (send tmp-robot :calc-static-balance-point)))
+    (assert (every #'null (mapcar #'(lambda (x) (and (> x 0) (< x 0))) (concatenate cons sbp1))) "Check nan of sbp1")
+    (assert (every #'null (mapcar #'(lambda (x) (and (> x 0) (< x 0))) (concatenate cons sbp2))) "Check nan of sbp2")
+    (assert (eps-v= sbp1 sbp2) "Check equality of sbp1 and sbp2")
+    ))
+
+(deftest test-calc-grasp-matrix
+  (let* ((size (1+ (random 10)))
+         (contact-points (mapcar #'(lambda (x) (random-vector)) (make-list size)))
+         (contact-rots (mapcar #'(lambda (x) (rpy-matrix (deg2rad (- (random 180.0) 90.0)) (deg2rad (- (random 180.0) 90.0)) (deg2rad (- (random 180.0) 90.0))))
+                               (make-list size)))
+         (world-force-list (mapcar #'(lambda (x) (random-vector)) (make-list size)))
+         (world-moment-list (mapcar #'(lambda (x) (random-vector)) (make-list size)))
+         (local-force-list (mapcar #'(lambda (f r) (transform (transpose r) f)) world-force-list contact-rots))
+         (local-moment-list (mapcar #'(lambda (n r) (transform (transpose r) n)) world-moment-list contact-rots)))
+    (warn ";; test-grasp-matrix size = ~A~%" size)
+    (let ((ret1
+           ;; Direct calculation
+           (concatenate float-vector
+                        (reduce #'v+ world-force-list :initial-value (float-vector 0 0 0))
+                        (v+
+                         (reduce #'v+ (mapcar #'(lambda (p f) (v* (scale 1e-3 p) f)) contact-points world-force-list)
+                                 :initial-value (float-vector 0 0 0))
+                         (reduce #'v+ world-moment-list :initial-value (float-vector 0 0 0)))))
+          (ret2
+           ;; World grasp matrix
+           (transform
+            (send *sample-robot* :calc-grasp-matrix contact-points)
+            (apply
+             #'concatenate
+             float-vector
+             (flatten
+              (mapcar #'(lambda (f m) (list f m)) world-force-list world-moment-list)))))
+          (ret3
+           ;; Local grasp matrix
+           (transform
+            (send *sample-robot* :calc-grasp-matrix contact-points :contact-rots contact-rots)
+            (apply
+             #'concatenate
+             float-vector
+             (flatten
+              (mapcar #'(lambda (f m) (list f m)) local-force-list local-moment-list))))))
+      (and (eps-v= ret1 ret2) (eps-v= ret1 ret3))
+      )))
 
 (run-all-tests)
 (exit 0)
