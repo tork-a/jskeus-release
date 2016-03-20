@@ -427,26 +427,31 @@
     self)
   (:joint-angle
     (&optional v &key relative &allow-other-keys)
-    "return joint-angle if v is not set, if v is given, set joint angle. v is joint-angle vector by axis-angle representation, i.e (scale rotation-angle-from-default-coords[deg] axis-unit-vector)"
-    ;; v is anguler velocity [deg]
+    "return joint-angle if v is not set, if v is given, set joint angle.
+     v is joint-angle vector [deg] by axis-angle representation, i.e (scale rotation-angle-from-default-coords[deg] axis-unit-vector)"
     (when v
-      ;; if relative nil
-      ;; v is equivalent to orthogonal orientation matrix calculated from (send (send world-default-coords :transformation child-link) :worldrot)
-      (unless relative (setq joint-angle v))
-      (let* ((drot (matrix-exponent (map float-vector #'deg2rad joint-angle))))
-	(if relative
-	    ;; if relative t
-	    ;; v is calculated from difference-rotation or jacobian
-	    (let ((vec (map float-vector #'deg2rad v)))
-	      (unless (eps= (norm vec) 0.0 1e-20)
-		(m* (rotation-matrix (norm vec) (normalize-vector vec)) drot drot))))
-	;; min max check
-	(let* ((dr (map float-vector #'rad2deg (matrix-log drot))))
-	  (setq joint-angle (vmin (vmax dr min-angle) max-angle)))
-	;; update child-link
-	(send child-link :replace-coords default-coords)
-	(send child-link :transform
-	      (make-coords :rot (matrix-exponent (map float-vector #'deg2rad joint-angle))))))
+      ;; Update joint-angle
+      (cond
+       (relative
+        ;; if relative t
+        ;; v is axis-angle difference vector calculated from difference-rotation or jacobian
+        (let ((vec (map float-vector #'deg2rad v)))
+          (unless (eps= (norm vec) 0.0 1e-20)
+            ;; If vec is large, update joint-angle
+            (let ((drot (matrix-exponent (map float-vector #'deg2rad joint-angle))))
+              (m* (rotation-matrix (norm vec) (normalize-vector vec)) drot drot)
+              (setq joint-angle (map float-vector #'rad2deg (matrix-log drot))))
+            )))
+       (t
+        ;; if relative nil
+        ;; v is axis-angle equivalent to orthogonal orientation matrix calculated from (send (send world-default-coords :transformation child-link) :worldrot)
+        (setq joint-angle v)))
+      ;; min max check
+      (setq joint-angle (vmin (vmax joint-angle min-angle) max-angle))
+      ;; update child-link
+      (send child-link :replace-coords default-coords)
+      (send child-link :transform
+            (make-coords :rot (matrix-exponent (map float-vector #'deg2rad joint-angle)))))
     joint-angle)
   (:joint-angle-rpy ;; v and return-value -> [deg] and (float-vector yaw roll pitch)
     (&optional v &key relative)
@@ -569,29 +574,38 @@
     (&optional v &key relative &allow-other-keys) ;; v [mm] [deg]
     "Return joint-angle if v is not set, if v is given, set joint angle vector, which is 6D vector of 3D translation[mm] and 3D rotation[deg], i.e. (find-if #'(lambda (x) (eq (send (car x) :name) 'sphere-joint)) (documentation :joint-angle))"
     (when v
-      (let (dp drot)
-	;; translation
-	(setq dp (if relative
-		     (v+ (subseq joint-angle 0 3) (subseq v 0 3))
-		   (subseq v 0 3)))
-	(setq dp (vmin (vmax dp (subseq min-angle 0 3)) (subseq max-angle 0 3)))
-	;; rotation
-	(unless relative (dotimes (i 3) (setf (elt joint-angle (+ i 3)) (elt v (+ i 3)))))
-	(setq drot (matrix-exponent (map float-vector #'deg2rad (subseq joint-angle 3 6))))
-	(if relative
-	    (let ((vec (map float-vector #'deg2rad (subseq v 3 6))))
-	      (unless (eps= (norm vec) 0.0 1e-20)
-		(m* (rotation-matrix (norm vec) (normalize-vector vec)) drot drot))))
-	;; min max check
-	(let* ((dr (map float-vector #'rad2deg (matrix-log drot))))
-	  (setq dr (vmin (vmax dr (subseq min-angle 3 6)) (subseq max-angle 3 6)))
-	  (dotimes (i 3)
-	    (setf (elt joint-angle i) (elt dp i))
-	    (setf (elt joint-angle (+ i 3)) (elt dr i)))
-	  ;; update child-link
-	  (send child-link :replace-coords default-coords)
-	  (send child-link :transform
-		(make-coords :rot (matrix-exponent (map float-vector #'deg2rad dr)) :pos dp)))))
+      (let (joint-angle-pos joint-angle-rot)
+        ;; Update joint-angle
+        ;;   translation
+        (setq joint-angle-pos (if relative
+                                  (v+ (subseq joint-angle 0 3) (subseq v 0 3))
+                                (subseq v 0 3)))
+        ;;   rotation
+        (cond
+         (relative
+          ;; if relative t
+          ;; rotation part of v is axis-angle difference vector calculated from difference-rotation or jacobian
+          (let ((vec (map float-vector #'deg2rad (subseq v 3 6))))
+            (if (eps= (norm vec) 0.0 1e-20)
+                (setq joint-angle-rot (subseq joint-angle 3 6))
+              (let ((drot (matrix-exponent (map float-vector #'deg2rad (subseq joint-angle 3 6)))))
+                (m* (rotation-matrix (norm vec) (normalize-vector vec)) drot drot)
+                (setq joint-angle-rot (map float-vector #'rad2deg (matrix-log drot))))
+              )))
+         (t
+          ;; if relative nil
+          ;; rotation part of v is axis-angle equivalent to orthogonal orientation matrix calculated from (send (send world-default-coords :transfor
+          (setq joint-angle-rot (subseq v 3 6))
+          ))
+        (dotimes (i 3)
+          (setf (elt joint-angle i) (elt joint-angle-pos i))
+          (setf (elt joint-angle (+ i 3)) (elt joint-angle-rot i)))
+        ;; min max check
+        (setq joint-angle (vmin (vmax joint-angle min-angle) max-angle))
+        ;; update child-link
+        (send child-link :replace-coords default-coords)
+        (send child-link :transform
+              (make-coords :rot (matrix-exponent (map float-vector #'deg2rad joint-angle-rot)) :pos joint-angle-pos))))
     joint-angle)
   (:joint-angle-rpy ;; v and return-value -> [deg] and (float-vector yaw roll pitch)
     (&optional v &key relative)
@@ -1088,12 +1102,21 @@
 	      (tmp-m33 (make-matrix 3 3))
 	      &allow-other-keys)
    "Calculate jacobian matrix from link-list and move-target. Unit system is [m] or [rad], not [mm] or [deg]."
+   "Joint order for this jacobian matrix follows link-list order. Joint torque[Nm] order is also the same.
+    Ex1. One-Arm
+    (setq *rarm-link-list* (send *robot* :link-list (send *robot* :rarm :end-coords :parent)))
+    (send-all *rarm-link-list* :joint)
+    Ex2. Two-Arm
+    (setq *arms-link-list* (mapcar #'(lambda (l) (send *robot* :link-list (send *robot* l :end-coords :parent))) '(:rarm :larm)))
+    (send-all (send *robot* :calc-union-link-list *arms-link-list*) :joint)
+   "
    (let* (len ul row
 	  child-reverse union-link-list
-	  j)
+	  j jdim)
      (unless fik (setq fik (make-matrix dim fik-len)))
 ;;
      (setq union-link-list (send self :calc-union-link-list link-list))
+     (setq jdim (send self :calc-target-joint-dimension union-link-list))
      (if (atom (car link-list)) (setq link-list (list link-list)))
      (if (atom move-target) (setq move-target (list move-target)))
      (if (atom transform-coords) (setq transform-coords (list transform-coords)))
@@ -1102,7 +1125,7 @@
 ;;
      (do ((col col-offset (+ col (send j :joint-dof)))
 	  (i 0 (1+ i)))
-         ((>= col (+ col-offset (send self :calc-target-joint-dimension union-link-list))))
+         ((>= col (+ col-offset jdim)))
        (setq ul (elt union-link-list i) row 0)
        (dotimes (m (length link-list))
          (let ((link-list (elt link-list m))
@@ -1269,11 +1292,11 @@
    (&rest args
 	  &key union-link-list (warnp t)
           ((:collision-avoidance-link-pair pair-list))
+          ((:collision-distance-limit distance-limit) 10) ;; [mm]
 	  &allow-other-keys)
    (let* ((pair-len (length pair-list))
 	  (col-list (send self :get :collision-distance))
-	  (distance-limit 10)
-	  (sc 0.0) np pair)
+          np pair)
      (when (or (null union-link-list) (= pair-len 0))
        (return-from :collision-avoidance-calc-distance nil))
      (if (or (null col-list) (/= (length col-list) pair-len))
@@ -1300,6 +1323,12 @@
 	       (setf (elt col-list i) np)))
            (scale 0.001 (normalize-vector (v- (elt np 1) (elt np 2) (elt np 3)) (elt np 3)) (elt np 3))
 	   ))) ;; dotimes
+     ;; Element of "col-list" (variable "np") is list of:
+     ;;   distance-between-pair1<->pair2
+     ;;   nearest-point-on-pair1
+     ;;   nearest-point-on-pair2
+     ;;   direction-vector-from-p2->p1
+     ;;   index-of-this-pair-within-collision-avoidance-link-pair
      (sort col-list #'<= #'(lambda (p) (car p)))
      (send self :put :collision-distance col-list)
      t))
@@ -1374,7 +1403,6 @@
             &allow-other-keys)
    (send* self :collision-avoidance-calc-distance args)
    (let ((pair-len (length pair-list)) (n 0)
-         (min-distance (car (elt (send self :get :collision-distance) 0)))
          (dav-col (instantiate float-vector fik-len)))
      (send self :put :collision-pair-list pair-list)
      (if (atom (car link-list)) (setq link-list (list link-list)))
@@ -2035,7 +2063,7 @@
 		   rotation-axis translation-axis thre rthre
 		   centroid-thre target-centroid-pos centroid-offset-func cog-translation-axis
                    :update-mass-properties nil))
-       (if (and additional-check success)
+       (if additional-check
            (setq success (and success (funcall additional-check))))
 
        ;; calculation of move-coords velocities from vel-p and vel-r
@@ -2104,7 +2132,9 @@
 
        ;; check loop end
        (if success
-           :ik-succeed
+           (progn
+             (send self :put :ik-draw-on-params nil) ;; Clear :ik-draw-on-params
+             :ik-succeed)
          (progn
            (when (and debug-view (not (memq :no-clear debug-view)) *viewer*)
              (send *viewer* :viewsurface :clear))
@@ -2117,6 +2147,12 @@
                           :jacobi jacobi :debug-view debug-view
                           ;; buffer for calculation
                           method-args)
+           ;; Visualizaion for :inverse-kinematics-loop. In :inverse-kinematics-loop,
+           ;;   1. Calculate of current value and target value
+           ;;   2. Solve inverse kinematics, update robot state, and update robot's viewer state
+           ;;   3. Add current value and target value viewer draw-on information.
+           ;;   4. Call (send *viewer* :viewsurface :flush) and everything are displayed.
+           ;;   For 3, we need to store information of 1 through :draw-collision-debug-view or :ik-draw-on-params
            (when (and debug-view  *viewer*)
              (send *viewer* :draw-objects :clear nil :flush nil)
              ;;
@@ -2128,9 +2164,9 @@
                  (send (elt target-coords i) :draw-on :flush nil :color #f(1 0 0))))
              (dolist (p (send self :get :ik-draw-on-params))
                (send* (car p) :draw-on :flush nil (cdr p)))
-             (send self :put :ik-draw-on-params nil)
              (if (not (memq :no-flush debug-view)) (send *viewer* :viewsurface :flush))
              )
+           (send self :put :ik-draw-on-params nil) ;; Clear :ik-draw-on-params
            :ik-continues)
          )
        ))
@@ -2523,20 +2559,28 @@
 	     (push p cpairs)))
 	 ))
      cpairs))
-  ;; calc grasp matrix
-  ;;  -> grasp matrix is defined as
-  ;;   | E_3    0   E_3    0   ... |
-  ;;   | p1_hat E_3 p2_hat E_3 ... |
   (:calc-grasp-matrix
-   (contact-points &optional (ret (make-matrix 6 (* 6 (length contact-points))))) ;; contact-points [mm]
-   (let ((contact-matrices (mapcar #'(lambda (x) (outer-product-matrix (scale 1e-3 x))) contact-points)))
+   (contact-points
+    &key (ret (make-matrix 6 (* 6 (length contact-points))))
+         (contact-rots (mapcar #'(lambda (r) (unit-matrix 3)) contact-points)))
+   "Calc grasp matrix.
+      Grasp matrix is defined as
+       | E_3 0   E_3 0   ... |
+       | p1x E_3 p2x E_3 ... |
+    Arguments:
+      contact-points is list of contact points[mm].
+      contact-rots is list of contact coords rotation[rad].
+      If contact-rots is specified, grasp matrix as follow:
+       | R1    0  R2    0  ... |
+       | p1xR1 R1 p2xR2 R2 ... |"
+   (let* ((contact-matrices (mapcar #'(lambda (p r) (m* (outer-product-matrix (scale 1e-3 p)) r)) contact-points contact-rots)))
      (dotimes (c (length contact-points))
        (dotimes (i 3)
-	 (setf (aref ret i (+ (* c 6) i)) 1.0)
-	 (setf (aref ret (+ 3 i) (+ (* c 6) 3 i)) 1.0)
-	 (dotimes (j 3)
-	   (setf (aref ret (+ 3 i) (+ (* c 6) j)) (aref (elt contact-matrices c) i j))
-	   )))
+         (dotimes (j 3)
+           (setf (aref ret i (+ (* c 6) j)) (aref (elt contact-rots c) i j))
+           (setf (aref ret (+ 3 i) (+ (* c 6) 3 j)) (aref (elt contact-rots c) i j))
+           (setf (aref ret (+ 3 i) (+ (* c 6) j)) (aref (elt contact-matrices c) i j))
+           )))
      ret))
   ;; closed loop kinematics method
   (:inverse-kinematics-for-closed-loop-forward-kinematics
