@@ -7,6 +7,8 @@
           (< (abs (elt (send (send (car (send robot :links)) :transformation (apply #'midcoords 0.5 (send robot :legs :end-coords))) :worldpos) 2)) 400))
          (default-step-height (if is-small-robot 10 50)))
   (send robot :reset-pose)
+  (if is-small-robot
+      (send robot :legs :move-end-pos #f(0 0 20)))
   (send robot :fix-leg-to-coords (make-coords))
   (objects (list robot))
   (warn ";; test1 ;; specify footstep-list~%")
@@ -29,11 +31,14 @@
   (warn ";; test2 ;; calc footstep-list from go pos param~%")
   (objects (list robot
                  (apply #'midcoords 0.5 (send robot :legs :end-coords))
-                 (send (send (apply #'midcoords 0.5 (send robot :legs :end-coords)) :translate (float-vector 500 150 0)) :rotate (deg2rad 45) :z)))
+                 (send (send (apply #'midcoords 0.5 (send robot :legs :end-coords)) :translate (if is-small-robot (float-vector 100 30 0) (float-vector 500 150 0))) :rotate (deg2rad 45) :z)))
   (if is-small-robot (send robot :gen-footstep-parameter :ratio 0.3))
   (send robot :calc-walk-pattern-from-footstep-list
-        (send robot :go-pos-params->footstep-list
-              500 150 45) ;; x[mm] y[mm] th[deg]
+        (if is-small-robot
+            (send robot :go-pos-params->footstep-list
+                  100 30 45) ;; x[mm] y[mm] th[deg]
+          (send robot :go-pos-params->footstep-list
+                500 150 45)) ;; x[mm] y[mm] th[deg]
         :debug-view :no-message
         :default-step-height default-step-height)
   ))
@@ -68,6 +73,42 @@
     )
   ))
 
+(defun walk-motion-stair-climb
+  (robot)
+  "walking motion example for start climb"
+  (let* ((is-small-robot
+          (< (abs (elt (send (send (car (send robot :links)) :transformation (apply #'midcoords 0.5 (send robot :legs :end-coords))) :worldpos) 2)) 400))
+         (default-step-height (if is-small-robot 10 50)))
+  ;; At the initial posture, the COG is above the right foot.
+  (send robot :reset-pose)
+  (send robot :fix-leg-to-coords (make-coords))
+  (send robot :legs :move-end-pos #f(0 0 50) :world)
+  (send robot :fix-leg-to-coords (make-coords))
+  (send robot :move-centroid-on-foot :rleg '(:rleg :lleg))
+  (objects (list robot))
+  (warn ";; test1 ;; upstair~%")
+  (let* ((test1-scale (if is-small-robot 0.25 1.0))
+         (footstep-list
+          (list (make-coords :coords (send robot :rleg :end-coords :copy-worldcoords) :name :rleg)
+                (make-coords :coords (send (send robot :lleg :end-coords :copy-worldcoords) :translate (scale test1-scale #f(150 0 50))) :name :lleg)
+                (make-coords :coords (send (send robot :rleg :end-coords :copy-worldcoords) :translate (scale test1-scale #f(150 0 50))) :name :rleg)
+                )))
+    (objects (append (list robot) footstep-list))
+    (send robot :calc-walk-pattern-from-footstep-list
+          footstep-list
+          :solve-angle-vector-args
+          (list :root-link-virtual-joint-weight #f(0.1 0.1 0.1 0.0 0.0 0.5)
+                :joint-args (list :absolute-p t
+                                  :min (float-vector -500 -500  -1000 -20 -20 -10)
+                                  :max (float-vector  500  500  1000  20  20  10))
+                :cog-translation-axis t :debug-view nil)
+          :default-step-height default-step-height
+          :debug-view :no-message
+          ;;:dt 0.01
+          :init-pose-function #'(lambda ()))
+    )
+  ))
+
 (defun walk-motion-for-sample-robot ()
   (unless (boundp '*robot*)
     (setq *robot* (instance sample-robot :init)))
@@ -77,8 +118,14 @@
   (unless (boundp '*robot*)
     (setq *robot* (instance sample-robot :init)))
   (walk-motion-single-support *robot*))
+
+(defun walk-motion-stair-climb-for-sample-robot ()
+  (unless (boundp '*robot*)
+    (setq *robot* (instance sample-robot :init)))
+  (walk-motion-stair-climb *robot*))
 (warn "(walk-motion-for-sample-robot) ;; for walking motion~%")
 (warn "(walk-motion-single-support-for-sample-robot) ;; for walking motion~%")
+(warn "(walk-motion-stair-climb-for-sample-robot) ;; for walking motion~%")
 
 (defun quad-walk-motion-for-sample-robot
   (gen-footstep-func &key (go-backward-over t) (rotation-axis (list t t t t)))
@@ -144,7 +191,7 @@
       )))
 
 (defun trot-walk-motion-for-sample-robot
-  (&key (go-backward-over t) (rotation-axis (list t t nil nil)))
+  (&key (go-backward-over t) (rotation-axis (list t t t t)))
   (quad-walk-motion-for-sample-robot
    #'(lambda () (send *robot* :go-pos-quadruped-params->footstep-list 200 100 0 :type :trot))
    :go-backward-over go-backward-over
