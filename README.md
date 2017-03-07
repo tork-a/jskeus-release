@@ -1,3 +1,26 @@
+## jskeus (indigo) - 1.1.0-0
+
+The packages in the `jskeus` repository were released into the `indigo` distro by running `/usr/bin/bloom-release jskeus --track indigo --rosdistro indigo` on `Tue, 07 Mar 2017 07:32:41 -0000`
+
+The `jskeus` package was released.
+
+Version of package(s) in repository `jskeus`:
+
+- upstream repository: https://github.com/euslisp/jskeus
+- release repository: https://github.com/tork-a/jskeus-release.git
+- rosdistro version: `1.0.14-0`
+- old version: `1.0.14-0`
+- new version: `1.1.0-0`
+
+Versions of tools used:
+
+- bloom version: `0.5.24`
+- catkin_pkg version: `0.3.1`
+- rosdep version: `0.11.5`
+- rosdistro version: `0.6.1`
+- vcstools version: `0.1.39`
+
+
 ## jskeus (kinetic) - 1.0.14-0
 
 The packages in the `jskeus` repository were released into the `kinetic` distro by running `/usr/bin/bloom-release jskeus -r kinetic --track kinetic` on `Fri, 30 Dec 2016 08:01:20 -0000`
