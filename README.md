@@ -1,3 +1,26 @@
+## jskeus (melodic) - 1.2.0-3
+
+The packages in the `jskeus` repository were released into the `melodic` distro by running `/usr/bin/bloom-release jskeus -y --rosdistro melodic --track melodic` on `Thu, 19 Jul 2018 06:25:26 -0000`
+
+The `jskeus` package was released.
+
+Version of package(s) in repository `jskeus`:
+
+- upstream repository: https://github.com/euslisp/jskeus
+- release repository: https://github.com/tork-a/jskeus-release.git
+- rosdistro version: `1.2.0-0`
+- old version: `1.2.0-2`
+- new version: `1.2.0-3`
+
+Versions of tools used:
+
+- bloom version: `0.6.6`
+- catkin_pkg version: `0.4.2`
+- rosdep version: `0.12.2`
+- rosdistro version: `0.6.8`
+- vcstools version: `0.1.40`
+
+
 ## jskeus (melodic) - 1.2.0-2
 
 The packages in the `jskeus` repository were released into the `melodic` distro by running `/usr/bin/bloom-release jskeus -y --rosdistro melodic --track melodic` on `Thu, 19 Jul 2018 06:21:57 -0000`
