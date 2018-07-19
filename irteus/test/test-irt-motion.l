@@ -1011,8 +1011,8 @@
                               (make-coords :coords (send (send *sample-robot* :lleg :end-coords :copy-worldcoords) :translate (float-vector 0 100 0)) :name :lleg)
                               (make-coords :coords (send (send *sample-robot* :rleg :end-coords :copy-worldcoords) :translate (float-vector 0 100 0)) :name :rleg))))
     (setq cog2 (cadr (memq :cog (car av-list))))
-    (assert (eps= (elt cog0 1) (elt cog1 1) 0.5))
-    (assert (eps= (elt cog0 1) (- (elt cog2 1) 100) 0.5))
+    (assert (eps= (elt cog0 1) (elt cog1 1) 1.5) (format nil "cog: ~A ~A" cog0 cog1))
+    (assert (eps= (elt cog0 1) (- (elt cog2 1) 100) 1.5) (format nil "cog: ~A ~A" cog0 cog2))
     ))
 
 (deftest test-samplerobot-static-balance-point
@@ -1072,6 +1072,108 @@
            (send *sample-robot* :calc-torque :calc-statics-p t)
            )))
     (assert (eps-v= torque-without-root-joint torque-with-root-joint))
+    ))
+
+;; Test for with-append-root-joint
+(deftest test-with-append-root-joint
+  (let* ((mt (send *sample-robot* :rarm :end-coords))
+         (ll (send *sample-robot* :link-list (send mt :parent))))
+    (with-append-root-joint
+     (link-list-with-robot-6dof *sample-robot* ll :joint-class 6dof-joint)
+     (assert
+      (equal
+       (append (list (car (send *sample-robot* :links))) ll)
+       (car link-list-with-robot-6dof))
+      "Test single link-list without root-link")))
+  (let* ((mt (list (send *sample-robot* :rarm :end-coords) (send *sample-robot* :lleg :end-coords)))
+         (ll (mapcar #'(lambda (tmt) (send *sample-robot* :link-list (send tmt :parent))) mt)))
+    (with-append-root-joint
+     (link-list-with-robot-6dof *sample-robot* ll :joint-class 6dof-joint)
+     (assert
+      (equal
+       (mapcar #'(lambda (l) (append (list (car (send *sample-robot* :links))) l)) ll)
+       link-list-with-robot-6dof)
+      "Test multiple link-list without root-link")))
+  (let* ((root-move-target
+          (make-cascoords :coords (send (car (send *sample-robot* :links)) :copy-worldcoords)
+                          :parent (car (send *sample-robot* :links))))
+         (mt (list root-move-target (send *sample-robot* :larm :end-coords) (send *sample-robot* :rleg :end-coords)))
+         (ll (mapcar #'(lambda (c) (send *sample-robot* :link-list (send c :parent))) mt)))
+    (with-append-root-joint
+     (link-list-with-robot-6dof *sample-robot* ll :joint-class 6dof-joint)
+     (let ((ret
+            (equal
+             (mapcar #'(lambda (l) (append (list (car (send *sample-robot* :links))) l)) ll)
+             link-list-with-robot-6dof)))
+       (send (send root-move-target :parent) :dissoc root-move-target)
+       (assert ret "Test multiple link-list with root-link"))))
+  (send *sample-robot* :reset-pose)
+  (send *sample-robot* :newcoords (make-coords))
+  (let* ((root-move-target
+          (make-cascoords :coords (send (car (send *sample-robot* :links)) :copy-worldcoords)
+                          :parent (car (send *sample-robot* :links))))
+         (mt (list root-move-target (send *sample-robot* :lleg :end-coords) (send *sample-robot* :rleg :end-coords)))
+         (ll (mapcar #'(lambda (c) (send *sample-robot* :link-list (send c :parent))) mt)))
+    (let ((ret (send *sample-robot* :fullbody-inverse-kinematics
+                     (send-all mt :copy-worldcoords)
+                     :translation-axis (list :xy t t) ;; root-link XY positions are used for COG jacobian
+                     :move-target mt :link-list ll)))
+      (send (send root-move-target :parent) :dissoc root-move-target)
+      (assert ret "Test multiple link-list with root-link and IK"))))
+
+;; test to check https://github.com/euslisp/jskeus/issues/459 issue
+(deftest test-sample-robot-collision-avoidance-link-pair-from-link-list
+  (send *sample-robot* :collision-avoidance-link-pair-from-link-list
+        (send *sample-robot* :link-list
+              (send (send *sample-robot* :rarm :end-coords) :parent)
+              (send (send *sample-robot* :rarm :wrist-y) :child-link)))
+  (send *sample-robot* :collision-avoidance-link-pair-from-link-list
+        (send *sample-robot* :link-list
+              (send (send *sample-robot* :rarm :end-coords) :parent)
+              (send (send *sample-robot* :rarm :elbow-p) :child-link)))
+  (assert t)
+  )
+
+;; Check :cog-translation-axis dimension bug
+(deftest test-cog-translation-axis-dim
+  (unwind-protect
+      (progn
+        ;; Method overwrite to get method argument for checking
+        (unless (assoc :inverse-kinematics-loop-org (send cascaded-link :methods))
+          (rplaca (assoc :inverse-kinematics-loop (send cascaded-link :methods)) :inverse-kinematics-loop-org))
+        (defmethod cascaded-link
+          (:inverse-kinematics-loop
+           (dif-pos dif-rot &rest args &key ik-args &allow-other-keys)
+           (send self :put :tmp-ik-args ik-args) ;; Store ik-args just for this testing.
+           (send* self :inverse-kinematics-loop-org dif-pos dif-rot :ik-args ik-args args)))
+        ;; Testing
+        (mapcar #'(lambda (caxis caxis-dim)
+                    (assert
+                     (let ((ik-ret)
+                           (ik-target-axis-dim (send *sample-robot* :calc-target-axis-dimension (list t t) (list t t)))) ;; rotation-axis (list t t) and translation-axis (list t t) => dim = 12
+                       ;; Call :fullbody-inverse-kinematics
+                       (send *sample-robot* :reset-pose)
+                       (send *sample-robot* :newcoords (make-coords))
+                       (setq ik-ret
+                             (send *sample-robot* :fullbody-inverse-kinematics
+                                   (list (send *sample-robot* :rleg :end-coords :copy-worldcoords) (send *sample-robot* :lleg :end-coords :copy-worldcoords))
+                                   :move-target (list (send *sample-robot* :rleg :end-coords) (send *sample-robot* :lleg :end-coords))
+                                   :link-list (mapcar #'(lambda (x) (send *sample-robot* :link-list (send x :parent))) (list (send *sample-robot* :rleg :end-coords) (send *sample-robot* :lleg :end-coords)))
+                                   :target-centroid-pos (send *sample-robot* :centroid)
+                                   :cog-translation-axis caxis))
+                       (and ik-ret
+                            (= (cadr (memq :dim (send *sample-robot* :get :tmp-ik-args)))
+                               (+ ik-target-axis-dim caxis-dim)
+                               )))
+                     (format nil ";; Check COG axis dim (:cog-translation-axis = ~A should be dim = ~A)" caxis caxis-dim)))
+                (list t :z :xz nil) ;; :cog-translation-axis
+                (list 3 2 1 0) ;; Desired axis dimension
+                ))
+    ;; Revert method overwrite
+    (defmethod cascaded-link
+      (:inverse-kinematics-loop
+       (dif-pos dif-rot &rest args &key ik-args &allow-other-keys)
+       (send* self :inverse-kinematics-loop-org dif-pos dif-rot :ik-args ik-args args)))
     ))
 
 (run-all-tests)
