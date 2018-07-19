@@ -19,7 +19,7 @@ add_custom_command(OUTPUT ${INSTALLDIR}
   COMMAND cmake -E make_directory ${INSTALLDIR}/${ARCHDIR}/lib)
 add_custom_target(compile_jskeus
   DEPENDS ${INSTALLDIR}
-  COMMAND export EUSDIR=${EUSDIR} DISPLAY="" lt_cv_sys_lib_dlsearch_path_spec=${lt_cv_sys_lib_dlsearch_path_spec} && \$\(MAKE\) -j1 -l1 -C ${PROJECT_SOURCE_DIR}/irteus -f Makefile ARCHDIR=${ARCHDIR} EUSDIR=${EUSDIR} IRTEUSDIR=${INSTALLDIR} 'SVNVERSION=\\"${jskeus_VERSION}\\"' VERBOSE=1)
+  COMMAND export EUSDIR=${EUSDIR} DISPLAY="" lt_cv_sys_lib_dlsearch_path_spec=${lt_cv_sys_lib_dlsearch_path_spec} && \$\(MAKE\) all -j1 -l1 -d -C ${PROJECT_SOURCE_DIR}/irteus -f Makefile ARCHDIR=${ARCHDIR} EUSDIR=${EUSDIR} IRTEUSDIR=${INSTALLDIR} 'SVNVERSION=\\"${jskeus_VERSION}\\"' VERBOSE=1)
 
 install(CODE "execute_process(COMMAND \"${CMAKE_COMMAND}\" --build \"${CMAKE_BINARY_DIR}\" --target compile_jskeus RESULT_VARIABLE result_variable OUTPUT_VARIABLE output_variable)
 if(NOT \${result_variable} EQUAL 0)
@@ -28,7 +28,9 @@ endif()")
 
 install(DIRECTORY doc
    DESTINATION share/jskeus/
-   USE_SOURCE_PERMISSIONS)
+   USE_SOURCE_PERMISSIONS
+   PATTERN "doc/fig" EXCLUDE
+   PATTERN "doc/*.tex" EXCLUDE)
 install(DIRECTORY irteus
    DESTINATION share/euslisp/jskeus/
    USE_SOURCE_PERMISSIONS)
@@ -69,5 +71,13 @@ else()
   separate_arguments(_catkin_marker_file_content)
   file(APPEND \${_catkin_marker_file} \"${_catkin_marker_file_content}\")
 endif()
+")
+else()
+  install(CODE "
+file(GLOB catkin_install_files \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/*.py \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/setup.* \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/env.* \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/.ros* \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/.catkin*)
+foreach(file \${catkin_install_files})
+  message(\"Removing: \${file}\")
+  file(REMOVE \${file})
+endforeach()
 ")
 endif()
