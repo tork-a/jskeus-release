@@ -213,7 +213,7 @@
                 (make-coords :pos (car args))
                 (v- (car args) (send move-target :worldpos))))
               target-orient move-orient axis-orient axis-orient2 head-weight head-nspace jid)
-         ;; this code assuming that the robot does not have contenious rotatoin joint for neck-y
+         ;; this code assuming that the robot does not have continuous rotation joint for neck-y
          (setq p-dif-rot dif-rot
                dif-pos (send move-target :difference-position target-coords :translation-axis nil)
                dif-rot (send move-target :difference-rotation target-coords :rotation-axis :z))
@@ -459,7 +459,7 @@
     "fullbody inverse kinematics for legged robot.
      necessary args : target-coords, move-target, and link-list must include legs' (or leg's) parameters
                       ex. (send *robot* :fullbody-inverse-kinematics (list rarm-tc rleg-tc lleg-tc) :move-target (list rarm-mt rleg-mt lleg-mt) :link-list (list rarm-ll rleg-ll lleg-ll))"
-    (with-append-root-joint ;; inverse-kinematics with base-link
+    (with-append-root-joint ;; inverse-kinematics with root-link
      (link-list-with-robot-6dof self link-list
                                 :joint-class 6dof-joint
                                 :joint-args (append (list :min min :max max) joint-args))
@@ -691,14 +691,15 @@
              (end-coords-list (mapcar #'(lambda (x) (send self x :end-coords :copy-worldcoords)) (gg . all-limbs)))
              (contact-state (elt ret 8))
              )
-         (if debug-view
+         (when debug-view
              (send self :draw-gg-debug-view
                    end-coords-list
                    contact-state
                    (elt ret 5) ;; rz
                    (elt ret 6) ;; cog
                    (elt ret 7) ;; pz
-                   czmp dt))
+                   czmp dt)
+             (x::window-main-one))
          (push
           (list :angle-vector (car ret)
                 :root-coords (cadr ret)
@@ -1011,6 +1012,7 @@
          (static-balance-point-height (elt (apply #'midpoint 0.5 (send self :legs :end-coords :worldpos)) 2))
          (update-mass-properties t))
    "Calculate static balance point which is equivalent to static extended ZMP.
+    The output is expressed by the world coordinates.
     target-points are end-effector points on which force-list and moment-list apply.
     force-list [N] and moment-list [Nm] are list of force and moment at target-points.
     static-balance-point-height is height of static balance point [mm]."
