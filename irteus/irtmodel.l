@@ -809,12 +809,12 @@
              ;; currently only 1dof joint is supported
              (when (and (= (send j :joint-dof) 1) (= (send (send j :joint-min-max-target) :joint-dof) 1))
                ;; find index of joint-min-max-target
-               (let* ((ii 0) (jj (elt joint-list ii))
+               (let* ((ii 0) (jj (elt joint-list ii)) (ji 0)
                      tmp-joint-angle tmp-joint-min-angle tmp-joint-max-angle
                      tmp-target-joint-angle tmp-target-joint-min-angle tmp-target-joint-max-angle)
                  (while (not (eq jj (send j :joint-min-max-target)))
-                   (incf ii) (setq jj (elt joint-list ii)))
-                 (setq tmp-joint-angle (elt vec i) tmp-target-joint-angle (elt vec ii))
+                   (incf ii) (incf ji (send jj :joint-dof)) (setq jj (elt joint-list ii)))
+                 (setq tmp-joint-angle (elt vec i) tmp-target-joint-angle (elt vec ji))
                  (setq tmp-joint-min-angle (send j :joint-min-max-table-min-angle tmp-target-joint-angle)
                        tmp-joint-max-angle (send j :joint-min-max-table-max-angle tmp-target-joint-angle))
                  (setq tmp-target-joint-min-angle (send jj :joint-min-max-table-min-angle tmp-joint-angle)
@@ -844,7 +844,7 @@
                         (setq (j . joint-angle) tmp-joint-angle
                               (jj . joint-angle) tmp-target-joint-angle)
                         (setf (elt vec i) tmp-joint-angle)
-                        (setf (elt vec ii) tmp-target-joint-angle)
+                        (setf (elt vec ji) tmp-target-joint-angle)
                         )
                        );; cond
                );; let*
@@ -2031,7 +2031,7 @@
 	   (send *viewer* :viewsurface :clear))
        (if (atom (car link-list)) (setq link-list (list link-list)))
        (if (atom move-target) (setq move-target (list move-target)))
-       (if (atom target-coords) (setq target-coords (list target-coords)))
+       (if (or (atom target-coords) (functionp target-coords)) (setq target-coords (list target-coords)))
        (if (atom dif-pos) (setq dif-pos (list dif-pos)))
        (if (atom dif-rot) (setq dif-rot (list dif-rot)))
        (if (atom rotation-axis) (setq rotation-axis (list rotation-axis)))
@@ -2214,15 +2214,28 @@
                   (additional-jacobi) (additional-vel)
 		  &allow-other-keys)
    "Move move-target to target-coords.
-    dump-command should be t, nil, :always, :fail-only, :always-with-debug-log, or :fail-only-with-debug-log.
+   ;; target-coords, move-target, rotation-axis, translation-axis, link-list
+   ;; -> both list and atom OK.
+    target-coords : The coordinate of the target, or a function that returns coordinates. Use a list of targets to solve the IK relative to multiple end links simultaneously.
+    link-list : List of links to control. When the target-coords is list, this should be a list of lists.
+    move-target : Specify end-effector coordinate. When the target-coords is list, this should be list too.
+    stop : Maximum number for IK iteration. Default is 50.
+    debug-view : Set t to show debug message and visualization. Use :no-message to just show the irtview image. Default is nil.
+    warnp : Set nil to not display debug message when the IK failed. Default is t.
+    revert-if-fail : Set nil to keep the angle posture of IK solve iteration. Default is t, which return to original position when IK fails.
+    rotation-axis : Use nil for position only IK. :x, :y, :z for the constraint around axis with plus direction, :-x :-y :-z for axis with minus direction. :zz :yy :zz for direction free axis. :xm :ym :zm for allowing rotation with respect to mirror direction. When the target-coords is list, this should be list too. Default is t.
+    translation-axis : :x :y :z for constraint along the x, y, z axis. :xy :yz :zx for plane. Default is t.
+    thre : Threshold for position error to terminate IK iteration. Default is 1 [mm].
+    rthre : Threshold for rotation error to terminate IK iteration. Default is 0.017453 [rad] (1 deg).
+    check-collision : Set t to return false when self collision occurs at found IK solution. Default is nil. To avoid collision within IK loop, use set links to collision-avoidance-links slot of cascaded-link.
+    dump-command : should be t, nil, :always, :fail-only, :always-with-debug-log, or :fail-only-with-debug-log.
     Log are success/fail log and ik debug information log.
       t or :always           : dump log both in success and fail (for success/fail log).
       :always-with-debug-log : dump log both in success and fail (for success/fail log and ik debug information log).
       :fail-only             : dump log only in fail (for success/fail log).
       :always-with-debug-log : dump log only in fail (for success/fail log and ik debug information log).
       nil                    : do not dump log."
-   ;; target-coords, move-target, rotation-axis, translation-axis, link-list
-   ;; -> both list and atom OK.
+   (if (or (atom target-coords) (functionp target-coords)) (setq target-coords (list target-coords)))
    (let* ((loop 0)
           (union-link-list (if (functionp union-link-list) (funcall union-link-list link-list) (send self :calc-union-link-list link-list)))
           (av0 (send-all (remove-duplicates
@@ -2254,9 +2267,7 @@
 	(setq initial-log-str (format nil "~A;; move-target ~A~%" initial-log-str move-target))
 	(setq initial-log-str (format nil "~A;; rotatoin-axis ~A, translation-axis ~A~%" initial-log-str rotation-axis translation-axis))
 	(setq initial-log-str (format nil "~A;; thre ~A, rthre ~A, stop ~A~%" initial-log-str thre rthre stop))
-        (if (atom target-coords)
-            (setq initial-target-coords `(setq c0 ,target-coords))
-          (setq initial-target-coords `(setq c0 ',(mapcar #'(lambda (x) x) target-coords))))
+  (setq initial-target-coords `(setq c0 ',(mapcar #'(lambda (x) x) target-coords)))
         (setq initial-av `(setq av0 ,(send self :angle-vector))))
      ;; atom -> list
      (when debug-view
@@ -2267,7 +2278,6 @@
 	 (push :no-flush debug-view)))
      (if (atom (car link-list)) (setq link-list (list link-list)))
      (if (atom move-target) (setq move-target (list move-target)))
-     (if (atom target-coords) (setq target-coords (list target-coords)))
      (if (atom rotation-axis) (setq rotation-axis (list rotation-axis)))
      (if (atom translation-axis) (setq translation-axis (list translation-axis)))
      (if (atom thre) (setq thre (list thre)))
