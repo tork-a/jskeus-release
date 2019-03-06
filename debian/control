@@ -1,0 +1,12 @@
+Source: ros-melodic-jskeus
+Section: misc
+Priority: extra
+Maintainer: Kei Okada <k-okada@jsk.t.u-tokyo.ac.jp>
+Build-Depends: debhelper (>= 9.0.0), ros-melodic-catkin, ros-melodic-euslisp
+Homepage: http://euslisp.github.io/jskeus/manual.html
+Standards-Version: 3.9.2
+
+Package: ros-melodic-jskeus
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, ros-melodic-euslisp
+Description: EusLisp software developed and used by JSK at The University of Tokyo
