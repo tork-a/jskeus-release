@@ -212,6 +212,24 @@
      ;; transpose
      (transpose-image-rows img)
      img))
+  (:string
+   (x y str &optional (fid x:font-courb24))
+   "Draw string to irtviewer. x:font-courb24 and x::font-helvetica-bold-12 are supported for fid."
+   (send self :makecurrent)
+   (glMatrixMode GL_PROJECTION)
+   (glPushMatrix)
+   (send self :2d-mode)
+   (unless (eq (get self :glxusexfont) fid)
+     (setf (get self :glxusexfont) fid)
+     (glxUseXfont fid 32 96 (+ 1000 32)))
+   (glRasterPos2i (round x) (- (send self :height) (round y)))
+   (glListBase 1000)
+   (glCallLists (length str) GL_UNSIGNED_BYTE str)
+   (send self :3d-mode)
+   (glMatrixMode GL_PROJECTION)
+   (glPopMatrix)
+   (glMatrixMode GL_MODELVIEW)
+   )
   )
 
 (defun draw-globjects (vwr draw-things &key (clear t) (flush t) (draw-origin 150) (draw-floor nil) (floor-color #f(1 1 1)))
@@ -449,7 +467,7 @@
     ))
 
 (defun find-color (color)
-  "returns color vector of given color name, the name is defiend in https://github.com/euslisp/jskeus/blob/master/irteus/irtglrgb.l"
+  "returns color vector of given color name, the name is defined in https://github.com/euslisp/jskeus/blob/master/irteus/irtglrgb.l"
   (let (v c)
     (setq v
       (cond
@@ -460,7 +478,7 @@
        ((symbolp color)
 	(setq c (find-if #'(lambda (o) (eq (send o :name) color))
 			 *face-colors*))
-	(if c (send c :diffuse) (warn "Color name not found ")))
+	(if c (send c :diffuse) (warn "Color name (~A) not found~%" color)))
        (t color)))
     (unless v (setq v (float-vector 0.5 0.5 0.5)))
     v))

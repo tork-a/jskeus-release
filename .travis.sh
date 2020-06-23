@@ -25,9 +25,23 @@ if [ "$(which sudo)" == "" ]; then apt-get update && apt-get install -y sudo; el
 travis_time_end
 
 travis_time_start setup.apt-get_install
-sudo apt-get install -qq -y git make gcc g++ libjpeg-dev libxext-dev libx11-dev libgl1-mesa-dev libglu1-mesa-dev libpq-dev libpng-dev xfonts-100dpi xfonts-75dpi  # msttcorefonts could not install on 14.04 travis
+sudo apt-get install -qq -y git make gcc g++ libjpeg-dev libxext-dev libx11-dev libgl1-mesa-dev libglu1-mesa-dev libpq-dev libpng-dev xfonts-100dpi xfonts-75dpi pkg-config libbullet-dev  # msttcorefonts could not install on 14.04 travis
 # sudo apt-get install -qq -y texlive-latex-base ptex-bin latex2html nkf poppler-utils || echo "ok" # 16.04 does ont have ptex bin
 travis_time_end
+
+if [[ "$COLLISION_LIB" != "" ]]; then
+    travis_time_start setup.collision_lib
+
+    if [[ "$COLLISION_LIB" != "PQP" ]]; then
+        rm -fr $CI_SOURCE_PATH/irteus/PQP
+    fi
+
+    if [[ "$COLLISION_LIB" != "BULLET" ]]; then
+        dpkg -r libbullet-dev
+    fi
+
+    travis_time_end
+fi
 
 travis_time_start install # Use this to install any prerequisites or dependencies necessary to run your build
 cd ${HOME}
@@ -51,6 +65,9 @@ for test_l in irteus/test/*.l; do
 
     # osrf/ubuntu_arm64:trusty takes >50 min, skip irteus-demo.l
     [[ "$DOCKER_IMAGE" == *"arm64:trusty"* && $test_l =~ irteus-demo.l ]] && continue;
+    # skip collision test because bullet of 2.83 or later version is not released in trusty and jessie.
+    # https://github.com/euslisp/jskeus/blob/6cb08aa6c66fa8759591de25b7da68baf76d5f09/irteus/Makefile#L37
+    [[ ( "$DOCKER_IMAGE" == *"trusty"* || "$DOCKER_IMAGE" == *"jessie"* ) && $test_l =~ test-collision.l ]] && continue;
 
     travis_time_start jskeus.source.${test_l##*/}.test
 
