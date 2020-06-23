@@ -34,6 +34,26 @@
 (deftest test-particle
   (particle))
 
+(load "models/darwin.l")
+;; use :make-collisionmdoel for euscollada-robot, use darwin-robot to override
+(defmethod darwin-robot
+  ;; make collision model from faces or gl-vertices
+  (:make-collision-model-for-links
+   (&key (fat 0) ((:links ls) (send self :links)))
+   (dolist (ll ls)
+     (send ll :make-collisionmodel
+             :fat fat
+             :faces (flatten (mapcar #'(lambda (x)
+                                         (cond
+                                          ((find-method x :def-gl-vertices)
+                                           (send (x . glvertices) :convert-to-faces :wrt :world))
+                                          (t
+                                           (send x :faces))))
+                                     (send ll :bodies)))))
+   )
+  )
+
+
 ;; check whether all ik are solved for walking examples
 (deftest test-walk-motion-for-sample-robot
   (assert
@@ -88,6 +108,13 @@
 (deftest test-test-extended-preview-control-0
   (assert
    (every #'identity (test-preview-control-0 :preview-controller-class extended-preview-controller))))
+
+(deftest test-test-extended-preview-control-0-QR
+  (assert
+   (every #'identity (mapcar #'(lambda (x y) (and (eps= (cadr (memq :zmp x)) (cadr (memq :zmp y)))
+                                                  (eps= (cadr (memq :cog x)) (cadr (memq :cog y)))))
+                             (test-preview-control-0 :preview-controller-class extended-preview-controller :q 1 :r 1e-6)
+                             (test-preview-control-0 :preview-controller-class extended-preview-controller :q 1e1 :r 1e-5)))))
 
 (deftest test-test-preview-control-1
   (assert
