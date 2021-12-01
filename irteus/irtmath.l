@@ -15,11 +15,30 @@
 ;;; Workshop on Concurrent Object-based Systems,
 ;;;  IEEE 6th Symposium on Parallel and Distributed Processing, 1994
 ;;;
-;;; Permission to use this software for educational, research
-;;; and non-profit purposes, without fee, and without a written
-;;; agreement is hereby granted to all researchers working on
-;;; the IRT project at the University of Tokyo, provided that the
-;;; above copyright notice remains intact.  
+;;; Redistribution and use in source and binary forms, with or without
+;;; modification, are permitted provided that the following conditions are met:
+;;;
+;;; * Redistributions of source code must retain the above copyright notice,
+;;;   this list of conditions and the following disclaimer.
+;;; * Redistributions in binary form must reproduce the above copyright notice,
+;;;   this list of conditions and the following disclaimer in the documentation
+;;;   and/or other materials provided with the distribution.
+;;; * Neither the name of JSK Robotics Laboratory, The University of Tokyo
+;;;   (JSK) nor the names of its contributors may be used to endorse or promote
+;;;   products derived from this software without specific prior written
+;;;   permission.
+;;;
+;;; THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+;;; AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+;;; THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+;;; PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+;;; CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+;;; EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+;;; PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+;;; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+;;; WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+;;; OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+;;; ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ;;;
 
 (defun inverse-matrix (mat) ;; redefined
@@ -145,7 +164,7 @@
 
 
 (defun matrix2quaternion (m)
-  "returns quaternion of given matrix"
+  "returns quaternion (w x y z) of given matrix"
   (let (q0 q1 q2 q3  mq^2
 	   (q0^2 (/ (+ 1 (aref m 0 0) (aref m 1 1) (aref m 2 2)) 4))
 	   (q1^2 (/ (+ 1 (aref m 0 0) (- (aref m 1 1)) (- (aref m 2 2))) 4))
@@ -177,7 +196,7 @@
     (float-vector q0 q1 q2 q3)))
 
 (defun quaternion2matrix (q)
-  "returns matrix of given quaternion"
+  "returns matrix of given quaternion (w x y z)"
   (let ((q0 (elt q 0)) (q1 (elt q 1)) (q2 (elt q 2)) (q3 (elt q 3)))
     (unless (eps= (v. q q) 1.0 0.01)
         (warning-message 1 ";; quaternion2matrix : invalid input ~A, the norm is not 1~%" q))
@@ -646,23 +665,20 @@
 
 #|
 (defun lms-draw (r point-list)
-  (let (bs b str)
-    (setq bs nil)
-    (setq str "plot [0:80][0:50] '< echo \"")
-    (dotimes (i (length point-list))
-      (setq str (concatenate string str (format nil "~A ~A\\n"
-						(elt (elt point-list i) 0)
-						(elt (elt point-list i) 1)
-						)))
-      )
-    (setq str (concatenate string str (format nil "\"' title \"data\"~%")))
-    (format *gnuplot* "~a~%" str)
-
-    (setq str (format nil "replot ~A * x + ~A title \"regression\""
-		      (/ (elt (car r) 0) (- (elt (car r) 1)))
-		      (/ (cadr r) (- (elt (car r) 1)))
-		      ))
-    (format *gnuplot* "~a~%" str)
+  (let ()
+    ;; graph-view
+    (graph-view (list (mapcar #'vector-y point-list)) (mapcar #'vector-x point-list)
+                :mode "point" :xrange '(0 80) :yrange '(0 50)
+                :keylist (list "data")
+                :graph-instance *gnuplot*)
+    ;; raw-command version
+    (send *gnuplot* :command (format nil "plot [0:80][0:50] ~A * x + ~A title \"regression\", '-' with point title \"data\"~%~Ae"
+                                     (/ (elt (car r) 0) (- (elt (car r) 1)))
+                                     (/ (cadr r) (- (elt (car r) 1)))
+                                     (apply #'concatenate string
+                                            (mapcar #'(lambda (x) (format nil "~A ~A~%" (elt x 0) (elt x 1)))
+                                                    point-list))
+                                     ))
     t))
 
 (defun lms-demo (num)
@@ -677,7 +693,7 @@
 		    #f(39.0 27.0) #f(38.0 31.0) #f(32.0 25.0)))
 	)
     (when (not (boundp '*gnuplot*))
-      (setq *gnuplot* (piped-fork "gnuplot")))
+      (setq *gnuplot* (gnuplot)))
 
     (format t "apply lms with data~%")
     (setq r (lms data1))
