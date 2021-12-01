@@ -1,0 +1,12 @@
+Source: ros-noetic-jskeus
+Section: misc
+Priority: optional
+Maintainer: Kei Okada <k-okada@jsk.t.u-tokyo.ac.jp>
+Build-Depends: debhelper (>= 9.0.0), ros-noetic-catkin, ros-noetic-euslisp
+Homepage: http://euslisp.github.io/jskeus/manual.html
+Standards-Version: 3.9.2
+
+Package: ros-noetic-jskeus
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, ros-noetic-euslisp
+Description: EusLisp software developed and used by JSK at The University of Tokyo
