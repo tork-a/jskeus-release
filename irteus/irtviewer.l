@@ -15,11 +15,30 @@
 ;;; Workshop on Concurrent Object-based Systems,
 ;;;  IEEE 6th Symposium on Parallel and Distributed Processing, 1994
 ;;;
-;;; Permission to use this software for educational, research
-;;; and non-profit purposes, without fee, and without a written
-;;; agreement is hereby granted to all researchers working on
-;;; the IRT project at the University of Tokyo, provided that the
-;;; above copyright notice remains intact.  
+;;; Redistribution and use in source and binary forms, with or without
+;;; modification, are permitted provided that the following conditions are met:
+;;;
+;;; * Redistributions of source code must retain the above copyright notice,
+;;;   this list of conditions and the following disclaimer.
+;;; * Redistributions in binary form must reproduce the above copyright notice,
+;;;   this list of conditions and the following disclaimer in the documentation
+;;;   and/or other materials provided with the distribution.
+;;; * Neither the name of JSK Robotics Laboratory, The University of Tokyo
+;;;   (JSK) nor the names of its contributors may be used to endorse or promote
+;;;   products derived from this software without specific prior written
+;;;   permission.
+;;;
+;;; THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+;;; AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+;;; THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+;;; PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+;;; CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+;;; EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+;;; PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+;;; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+;;; WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+;;; OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+;;; ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ;;;
 
 (in-package "X")
@@ -75,6 +94,7 @@
 	  (hither 200.0) (yon 50000.0)
 	  (width 500) (height 500)
           ((:draw-origin do) 150) ((:draw-floor df) nil) ((:floor-color fc) #f(1 1 1))
+          (call-super t)
 	  &allow-other-keys)
    (let ()
      (setq left-right-angle 60
@@ -83,8 +103,9 @@
 	   viewtarget (float-vector 0 0 0)
            draw-origin do draw-floor df floor-color fc
            logging-flag nil)
-     (send-super* :create :width width :height height :title title
-		  :event-mask '(:configure) args)
+     (if call-super
+         (send-super* :create :width width :height height :title title
+                      :event-mask '(:configure) args))
      (setq gl::*perspective-far* yon)
      (setq gl::*perspective-near* hither)
      (setq viewer (apply #'user::view :parent self
@@ -590,9 +611,9 @@
   (cond
    ((or (null x::*display*) (= x::*display* 0))
     (warning-message 1 ";; no display is found. exit from (make-irtviewer)~%")
-    (setq *irtviewer* (instance irtviewer-dummy))
-    (setq *viewer* (instance viewer-dummy))
-    (setf (get *viewer* :pickviewer) *irtviewer*))
+    (make-irtviewer-dummy))
+   ((memq :no-window args)
+    (make-irtviewer-no-window))
    (t
     (setq *irtviewer* (send-lexpr (instantiate x::irtviewer) :create args))))
    *irtviewer*)
@@ -625,9 +646,49 @@
   (:nomethod (&rest args) t)
   ) ;;
 
+(defclass irtviewer-no-window
+  :super propertied-object
+  :slots (irtviewer))
+(defmethod irtviewer-no-window
+  (:init (&rest args)
+   (setq irtviewer (instantiate x::irtviewer))
+   self)
+  (:create (&rest args)
+   (send* irtviewer :create :call-super nil :alternate t args))
+  (:resize (newwidth newheight)
+   ;; (setq x::width newwidth x::height newheight)
+   ;; (send-super  :resize newwidth newheight) ; re-define resize, to skip resize xwindow
+   (send self :viewer :viewsurface :resize newwidth newheight)
+   (send self :viewer :viewsurface :makecurrent)
+   (send self :viewer :viewsurface :3d-mode)
+   (let ((wh-max (max newwidth newheight)))
+     (send (send self :viewer :viewport)
+           :resize :width wh-max :height (- wh-max)
+           :xcenter (/ newwidth 2) :ycenter (/ newheight 2)))
+   (send self :redraw))
+  (:nomethod (&rest args)
+   (send* irtviewer args))
+  ) ;;
+
 (defun make-irtviewer-dummy (&rest args)
   (warning-message 1 ";; no display is found. exit from (make-irtviewer)~%")
-  (setq *irtviewer* (instance x::irtviewer-dummy)))
+  (setq *irtviewer* (instance irtviewer-dummy))
+  (setq *viewer* (instance viewer-dummy))
+  (setf (get *viewer* :pickviewer) *irtviewer*)
+  *irtviewer*)
+
+(defun geo::default-pixmapsurface (&rest args)
+  (send-lexpr (instantiate gl::glpixmapsurface) :create args))
+(defun make-irtviewer-no-window (&rest args)
+  (setf (symbol-function 'geo::default-viewsurface-orig)
+        (symbol-function 'geo::default-viewsurface))
+  (setf (symbol-function 'geo::default-viewsurface)
+        (symbol-function 'geo::default-pixmapsurface))
+  (setq *irtviewer* (instance irtviewer-no-window :init))
+  (send-lexpr *irtviewer* :create args)
+  (setf (symbol-function 'geo::default-viewsurface)
+        (symbol-function 'geo::default-viewsurface-orig))
+  *irtviewer*)
 
 
 (defmacro with-save-mpeg (fname &rest forms)
