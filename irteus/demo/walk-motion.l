@@ -1,3 +1,44 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; Copyright (c) 1987- JSK, The University of Tokyo.  All Rights Reserved.
+;;;
+;;; This software is a collection of EusLisp code for robot applications,
+;;; which has been developed by the JSK Laboratory for the IRT project.
+;;; For more information on EusLisp and its application to the robotics,
+;;; please refer to the following papers.
+;;;
+;;; Toshihiro Matsui
+;;; Multithread object-oriented language euslisp for parallel and
+;;;  asynchronous programming in robotics
+;;; Workshop on Concurrent Object-based Systems,
+;;;  IEEE 6th Symposium on Parallel and Distributed Processing, 1994
+;;;
+;;; Redistribution and use in source and binary forms, with or without
+;;; modification, are permitted provided that the following conditions are met:
+;;;
+;;; * Redistributions of source code must retain the above copyright notice,
+;;;   this list of conditions and the following disclaimer.
+;;; * Redistributions in binary form must reproduce the above copyright notice,
+;;;   this list of conditions and the following disclaimer in the documentation
+;;;   and/or other materials provided with the distribution.
+;;; * Neither the name of JSK Robotics Laboratory, The University of Tokyo
+;;;   (JSK) nor the names of its contributors may be used to endorse or promote
+;;;   products derived from this software without specific prior written
+;;;   permission.
+;;;
+;;; THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+;;; AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+;;; THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+;;; PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+;;; CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+;;; EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+;;; PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+;;; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+;;; WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+;;; OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+;;; ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+;;;
+
 (load "sample-robot-model.l")
 
 (defun walk-motion
@@ -254,6 +295,20 @@
              tm-list (reverse zmp-list) (reverse cog-list) (reverse ref-zmp-list2))
      )
     (unless (or (null x::*display*) (= x::*display* 0))
+      ;; graph-view
+      (graph-view (list (reverse zmp-list) (reverse cog-list) (reverse ref-zmp-list2)) tm-list
+                  :xlabel "Time [s]" :ylabel "ZMP X [mm]"
+                  :keylist '("card zmp" "cog" "refmp"))
+      ;; online-version
+      (setq *gnuplot* (gnuplot))
+      (send *gnuplot* :proc-length (length tm-list))
+      (mapcar #'(lambda (tm zmp cog refzmp)
+                  (send *gnuplot* :proc-one (list zmp cog refzmp)
+                        :direction :left
+                        :title '("cart zmp" "cog" "refzmp")
+                        ))
+              tm-list (reverse zmp-list) (reverse cog-list) (reverse ref-zmp-list2))
+      ;; raw-command version
       (let ((gp-command-list (list
                               "set xlabel 'Time [s]';"
                               "set ylabel 'ZMP X [mm]';"
@@ -261,8 +316,9 @@
                               "replot '/tmp/test-preview-control-data.dat' using 1:3 title 'cog' with lines;"
                               "replot '/tmp/test-preview-control-data.dat' using 1:4 title 'refzmp' with lines;"
                               "pause -1;")))
-        (unix:system (format nil "gnuplot -e \"~A\""
-                             (let ((str "")) (dolist (gpc gp-command-list) (setq str (format nil "~A ~A" str gpc))) str)))))
+        (setq *g* (gnuplot))
+        (send *g* :command (apply #'concatenate string gp-command-list))
+        ))
     (mapcar #'(lambda (tm zmp cog refzmp)
                 (list :time tm :zmp zmp :cog cog :refzmp refzmp))
             tm-list (reverse zmp-list) (reverse cog-list) (reverse ref-zmp-list2))
@@ -305,8 +361,9 @@
                               "replot '/tmp/test-preview-control-data.dat' using 1:3 title 'cog' with lines;"
                               "replot '/tmp/test-preview-control-data.dat' using 1:4 title 'refzmp' with lines;"
                               "pause -1;")))
-        (unix:system (format nil "gnuplot -e \"~A\""
-                             (let ((str "")) (dolist (gpc gp-command-list) (setq str (format nil "~A ~A" str gpc))) str)))))
+        (setq *g* (gnuplot))
+        (send *g* :command (apply #'concatenate string gp-command-list))
+        ))
     (mapcar #'(lambda (tm zmp cog refzmp)
                 (list :time tm :zmp zmp :cog cog :refzmp refzmp))
             tm-list (reverse zmp-list) (reverse cog-list) (reverse ref-zmp-list2))
@@ -358,8 +415,9 @@
                               "replot '/tmp/test-preview-control-data.dat' using 1:3 title 'cog' with lines;"
                               "replot '/tmp/test-preview-control-data.dat' using 1:4 title 'refzmp' with lines;"
                               "pause -1;")))
-        (unix:system (format nil "gnuplot -e \"~A\""
-                             (let ((str "")) (dolist (gpc gp-command-list) (setq str (format nil "~A ~A" str gpc))) str)))))
+        (setq *g* (gnuplot))
+        (send *g* :command (apply #'concatenate string gp-command-list))
+        ))
     (mapcar #'(lambda (tm zmp cog refzmp)
                 (list :time tm :zmp zmp :cog cog :refzmp refzmp))
             tm-list (reverse zmp-list) (reverse cog-list) (reverse ref-zmp-list2))
@@ -404,8 +462,9 @@
                               "replot '/tmp/test-preview-control-data.dat' using 1:3 title 'cog' with lines;"
                               "replot '/tmp/test-preview-control-data.dat' using 1:4 title 'refzmp' with lines;"
                               "pause -1;")))
-        (unix:system (format nil "gnuplot -e \"~A\""
-                             (let ((str "")) (dolist (gpc gp-command-list) (setq str (format nil "~A ~A" str gpc))) str)))))
+        (setq *g* (gnuplot))
+        (send *g* :command (apply #'concatenate string gp-command-list))
+        ))
     (mapcar #'(lambda (tm zmp cog refzmp)
                 (list :time tm :zmp zmp :cog cog :refzmp refzmp))
             tm-list (reverse zmp-list) (reverse cog-list) (reverse ref-zmp-list2))
@@ -459,8 +518,9 @@
                                 "replot '/tmp/test-preview-control-data-2.dat' using 1:4 title 'output cog' with lines;"
                                 "replot '/tmp/test-preview-control-data-2.dat' using 1:5 title 'input cog' with lines;"
                                 "pause -1;")))
-          (unix:system (format nil "gnuplot -e \"~A\""
-                               (let ((str "")) (dolist (gpc gp-command-list) (setq str (format nil "~A ~A" str gpc))) str)))))
+          (setq *g* (gnuplot))
+          (send *g* :command (apply #'concatenate string gp-command-list))
+          ))
       data
       )))
 

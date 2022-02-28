@@ -15,11 +15,30 @@
 ;;; Workshop on Concurrent Object-based Systems,
 ;;;  IEEE 6th Symposium on Parallel and Distributed Processing, 1994
 ;;;
-;;; Permission to use this software for educational, research
-;;; and non-profit purposes, without fee, and without a written
-;;; agreement is hereby granted to all researchers working on
-;;; the IRT project at the University of Tokyo, provided that the
-;;; above copyright notice remains intact.  
+;;; Redistribution and use in source and binary forms, with or without
+;;; modification, are permitted provided that the following conditions are met:
+;;;
+;;; * Redistributions of source code must retain the above copyright notice,
+;;;   this list of conditions and the following disclaimer.
+;;; * Redistributions in binary form must reproduce the above copyright notice,
+;;;   this list of conditions and the following disclaimer in the documentation
+;;;   and/or other materials provided with the distribution.
+;;; * Neither the name of JSK Robotics Laboratory, The University of Tokyo
+;;;   (JSK) nor the names of its contributors may be used to endorse or promote
+;;;   products derived from this software without specific prior written
+;;;   permission.
+;;;
+;;; THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+;;; AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+;;; THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+;;; PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+;;; CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+;;; EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+;;; PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+;;; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+;;; WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+;;; OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+;;; ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ;;;
 ;;;
 ;;;
@@ -168,6 +187,9 @@
         (f (format nil "data_~a.dat" suffix) :direction :output)
       (dotimes (i (length x))
         (format f "~A ~A~%" (elt x i) (elt y i))))
+    ;; online gnuplotting
+    (if (not (boundp '*g*))
+        (send *g* :proc-length (length x)))
 
     ;; write estimated data
     (with-open-file
@@ -178,23 +200,24 @@
            (setq z (send kf :proc (float-vector (elt x i) (elt y i)) :adaptive t)))
           (t
            (setq z (send kf :proc (float-vector (elt x i) (elt y i))))))
+        ;; online gnuplotting
+        (send *g* :proc-one (list (elt y i) (elt z 1) (send kf :error) (aref (send kf :P) 1 1) -0.37727)
+              :direction :left
+              :xrange '(0 100)
+              :yrange '(-0.6 0)
+              :y2tics (list nil nil t t nil)
+              :title '("ovserved" "estimated" "error" "P covariance" "baseline"))
         (format f "~A ~A ~A ~A~%" (elt x i) (elt z 1) (send kf :error) (aref (send kf :P) 1 1))))
 
     ;; write graph data
-    (let ((fname (format nil "visualize_~A.sh" suffix)))
-      (format t ";; Writing gnuplot script to ~s~%" fname)
-      (with-open-file
-          (f fname :direction :output :permission #o744)
-        (format f "#!/usr/bin/env gnuplot~%")
-        (format f "~%")
-        (format f "set title \"~A\"~%" suffix)
-        (format f "plot [0:100][-0.6:0] 'data_~a.dat' title \"observed\" with linespoints~%" suffix)
-        (format f "set y2tics~%")
-        (format f "set y2range [0:0.01]~%")
-        (format f "replot 'kalman_result_~a.dat' title \"estimated\" with linespoints~%" suffix)
-        (format f "replot 'kalman_result_~a.dat' using 3 axes x1y2 title \"error\" with linespoints~%" suffix)
-        (format f "replot 'kalman_result_~a.dat' using 4 axes x1y2 title 'P covariance' with linespoints~%" suffix)
-        (format f "replot -0.37727 title \"baseline\"~%")
-        (format f "pause -1~%"))
-      (piped-fork (concatenate string (unix:getwd) "/" fname))
+    (setq *g* (gnuplot))
+    (send *g* :command (format nil "set title \"~A\"" suffix))
+    (send *g* :command (format nil "plot [0:100][-0.6:0] 'data_~a.dat' title \"observed\" with linespoints" suffix))
+    (send *g* :command "set y2tics")
+    (send *g* :command "set y2range [0:0.01]")
+    (send *g* :command (format nil "replot 'kalman_result_~a.dat' title \"estimated\" with linespoints" suffix))
+    (send *g* :command (format nil "replot 'kalman_result_~a.dat' using 3 axes x1y2 title \"error\" with linespoints" suffix))
+    (send *g* :command (format nil "replot 'kalman_result_~a.dat' using 4 axes x1y2 title 'P covariance' with linespoints" suffix))
+    (send *g* :command "replot -0.37727 title \"baseline\"")
+    (send *g* :command "pause -1")
     t))

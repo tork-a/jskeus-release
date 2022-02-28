@@ -15,11 +15,30 @@
 ;;; Workshop on Concurrent Object-based Systems,
 ;;;  IEEE 6th Symposium on Parallel and Distributed Processing, 1994
 ;;;
-;;; Permission to use this software for educational, research
-;;; and non-profit purposes, without fee, and without a written
-;;; agreement is hereby granted to all researchers working on
-;;; the IRT project at the University of Tokyo, provided that the
-;;; above copyright notice remains intact.  
+;;; Redistribution and use in source and binary forms, with or without
+;;; modification, are permitted provided that the following conditions are met:
+;;;
+;;; * Redistributions of source code must retain the above copyright notice,
+;;;   this list of conditions and the following disclaimer.
+;;; * Redistributions in binary form must reproduce the above copyright notice,
+;;;   this list of conditions and the following disclaimer in the documentation
+;;;   and/or other materials provided with the distribution.
+;;; * Neither the name of JSK Robotics Laboratory, The University of Tokyo
+;;;   (JSK) nor the names of its contributors may be used to endorse or promote
+;;;   products derived from this software without specific prior written
+;;;   permission.
+;;;
+;;; THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+;;; AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+;;; THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+;;; PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+;;; CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+;;; EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+;;; PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+;;; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+;;; WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+;;; OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+;;; ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ;;;
 
 (require :irtmath)
@@ -374,10 +393,13 @@
 
 ;; return polygon if triangable ,unless return nil.
 ;; this function = sharpp + trianglable + insidep
+;; input face should be simple. see
+;;   Make Simple function in Triangulatio by Ear Clipping by David Eberly
+;;   http://www.geometrictools.com/Documentation/TriangulationByEarClipping.pdf
 (defun face-to-tessel-triangle (f num &optional (*epsilon* 1e-10))
   "return polygon if triangable, return nil if it is not."
   #-(or :x86_64 :aarch64)
-  (setq *epsilon* (* 1000.0 *epsilon*));; for 32bit system
+  (setq *epsilon* (* 10000.0 *epsilon*));; for 32bit system
   (let* ((vers (send f :vertices))
 	 (len (length (cdr vers)))
 	 (v0 (nth (mod (1- (+ num len)) len) vers)) ;; num - 1 th
@@ -399,7 +421,7 @@
                                               )))
                                    rvers)) (send poly :edges))
                  (if (> (length rvers) 3)
-                     (every #'(lambda (e)
+                     (every #'(lambda (e) ;; all edges in rest-polygon do not intersect with the edges of poly / allow the same edge (:colinear)
                                 ;; if not intersect return t;
                                 (let* ((e02 (make-line v0 v2))
                                        (r (send e :intersect-line e02)))
@@ -407,10 +429,12 @@
                                       (eq r :parallel)
                                       (eq r :outside)
                                       (and (consp r)
+                                           (eq (car r) :colinear))
+                                      (and (consp r)
                                            (eq (car r) :intersect)
                                            (not (eps-in-range 0.0 (elt r 1) 1.0 (- *epsilon*)))
                                            (not (eps-in-range 0.0 (elt r 2) 1.0 (- *epsilon*)))))))
-                            (send (instance face :init :vertices (butlast rvers)) :edges))
+                            (send (instance face :init :vertices (remove v1 (butlast vers))) :edges))
                    t)))
       (if not-intersectp
 	  poly
@@ -447,9 +471,31 @@
            (mapcan #'(lambda (e)
                        (let ((p (geo::line-intersection3 (e . pvert) (e . nvert)
                                                          (car v) (cdr v))))
-                         (when (and (<= 0.0 (car p) 1.0)
-                                    (< 0.0 (cadr p) 1.0))
-                           (list e))))
+                         (cond ;; intersects with an edge. not mutually visible.
+                               ((and (<= 0.0 (car p) 1.0)
+                                     (< 0.0 (cadr p) 1.0))
+                                (list e))
+                               ;; vertex is on an edge. never happen?
+                               ((and (< 0.0 (car p) 1.0)
+                                     (or (= 0.0 (cadr p)) (= 1.0 (cadr p))))
+                                nil) ;; not implemented yet
+                               ;; multiple vertices exist at the same position. avoid crossing. See https://github.com/euslisp/jskeus/pull/585#issuecomment-709988453
+                               ((and (or (= 0.0 (car p)) (= 1.0 (car p)))
+                                     (or (= 0.0 (cadr p)) (= 1.0 (cadr p)))
+                                     (not (or (memq (car v) (send e :vertices)) (memq (cdr v) (send e :vertices)))))
+                                ;; v0, v1, v2: consecutive vertices in f or h. v1 is at the same position as one of v, but not the same object.
+                                ;; vt: another point of v
+                                ;; If located clockwise around v1 in the order of v2 vt v0, crossing will occur.
+                                (let* ((v1 (if (= 0.0 (car p)) (e . pvert) (e . nvert)))
+                                       (ein (find-if #'(lambda (e) (eq v1 (e . nvert))) (flatten (append (send-all hs :edges) (send f :edges)))))
+                                       (v0 (ein . pvert))
+                                       (eout (find-if #'(lambda (e) (eq v1 (e . pvert))) (flatten (append (send-all hs :edges) (send f :edges)))))
+                                       (v2 (eout . nvert))
+                                       (vt (if (= 0.0 (cadr p)) (cdr v) (car v))))
+                                  (when (< (mod (+ (vector-angle (v- v2 v1) (v- vt v1) (send f :normal)) 2PI) 2PI)
+                                           (mod (+ (vector-angle (v- v2 v1) (v- v0 v1) (send f :normal)) 2PI) 2PI))
+                                    (list e)))))
+                         ))
                    (flatten (append (send-all hs :edges) (send f :edges)))))
           (unless r
             ;; r is mutually visible vertices
