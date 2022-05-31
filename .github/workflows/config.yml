@@ -60,6 +60,9 @@ jobs:
           git clone --depth 1 https://github.com/tork-a/jskeus-release jskeus
           cp -r $GITHUB_WORKSPACE/patches/* jskeus/
           wget https://raw.githubusercontent.com/tork-a/jskeus-release/release/${{ matrix.ROS_DISTRO }}/jskeus/package.xml -O jskeus/package.xml
+          #
+          apt-get install -qq -y patchutils
+          (wget https://patch-diff.githubusercontent.com/raw/euslisp/jskeus/pull/621.diff; filterdiff -i *Makefile 621.diff | patch -d jskeus -p1)
           cat jskeus/CMakeLists.txt
           cat jskeus/package.xml
           # rosdep install
